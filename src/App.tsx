@@ -17,6 +17,7 @@ import { Login } from "./components/Login";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
 import { MotivationQuote } from "./components/MotivationQuote";
+import { ConfettiBurst } from "./components/ConfettiBurst";
 import { Analytics } from "./components/Analytics";
 import { Settings } from "./components/Settings";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
@@ -66,6 +67,7 @@ export default function App() {
   const [drawerProblem, setDrawerProblem] = useState<Problem | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const streak = useMemo(() => currentStreak(store.activity), [store.activity]);
@@ -110,6 +112,7 @@ export default function App() {
     }
     if (goalHit && !goalHitRef.current) {
       goalHitRef.current = true;
+      setConfettiKey((k) => k + 1);
       const pool = getQuotePool(settings.customQuotes);
       const q = pool[randomQuoteIndex(null, pool.length)];
       notify(`🎯 Daily goal complete! “${q.text}” — ${q.author}`, "celebration");
@@ -563,6 +566,9 @@ export default function App() {
 
       {/* Chat assistant */}
       <ChatBot store={store} customQuotes={settings.customQuotes} />
+
+      {/* Goal-complete confetti */}
+      {confettiKey > 0 && <ConfettiBurst key={confettiKey} />}
 
       {/* Toast */}
       {toast && (

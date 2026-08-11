@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, MessageSquare, Send, X } from "lucide-react";
 import type { Store } from "../hooks/useStore";
 import type { Quote } from "../lib/quotes";
+import { getQuotePool, randomQuoteIndex } from "../lib/quotes";
 import { parseChat } from "../lib/assistant";
 import { relativeDay, todayKey } from "../lib/spaced";
 
@@ -94,12 +95,16 @@ export function ChatBot({ store, customQuotes }: { store: Store; customQuotes: Q
       case "toggleStatus": {
         const wasCompleted = action.problem.status === "completed";
         store.toggleStatus(action.problem.id);
-        respond(
-          wasCompleted
-            ? `Reopened “${action.problem.title}” — it's back in your active list.`
-            : `“${action.problem.title}” marked complete 🎉`,
-          ["What's due today?", "Stats"],
-        );
+        let reply: string;
+        if (wasCompleted) {
+          reply = `Reopened “${action.problem.title}” — it's back in your active list.`;
+        } else {
+          // Completing a problem earns a congratulatory quote from the rotation.
+          const pool = getQuotePool(customQuotes);
+          const quote = pool[randomQuoteIndex(null, pool.length)];
+          reply = `“${action.problem.title}” marked complete 🎉\n\n💪 “${quote.text}” — ${quote.author}`;
+        }
+        respond(reply, ["What's due today?", "Stats"]);
         break;
       }
       case "resetReview": {
