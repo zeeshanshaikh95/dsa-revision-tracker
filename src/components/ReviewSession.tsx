@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, SkipForward, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, Quote, SkipForward, X } from "lucide-react";
 import type { Problem } from "../types";
 import { relativeDay, reviewStatus, todayKey } from "../lib/spaced";
 import { generateRevisionNotes } from "../lib/revisionNotes";
+import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "../lib/quotes";
 import {
   ConfidenceIndicator,
   DifficultyBadge,
@@ -41,6 +42,8 @@ export function ReviewSession({
   }, [open, problems, today]);
 
   const [index, setIndex] = useState(0);
+  // Stable celebratory quote for the completion screen.
+  const [doneQuote] = useState(() => randomQuoteIndex(null));
 
   // Reset progress whenever a new session starts.
   useEffect(() => {
@@ -113,6 +116,13 @@ export function ReviewSession({
               You reviewed {queue.length} problem{queue.length === 1 ? "" : "s"}.
               The ones you solved are scheduled for their next interval; the
               skipped ones stay in your due queue.
+            </p>
+            <p className="mx-auto max-w-sm text-center text-sm italic leading-relaxed text-zinc-400">
+              <Quote className="mx-auto mb-1 h-4 w-4 text-emerald-400/80" />
+              “{MOTIVATIONAL_QUOTES[doneQuote].text}”
+              <span className="ml-2 block not-italic text-xs font-semibold text-zinc-600">
+                — {MOTIVATIONAL_QUOTES[doneQuote].author}
+              </span>
             </p>
             <button
               onClick={onClose}

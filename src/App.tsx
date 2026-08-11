@@ -15,6 +15,7 @@ import { Sidebar, type NavKey } from "./components/Sidebar";
 import { Login } from "./components/Login";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
+import { MotivationQuote } from "./components/MotivationQuote";
 import { Analytics } from "./components/Analytics";
 import { Settings } from "./components/Settings";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
@@ -368,6 +369,7 @@ export default function App() {
 
   const dashboard = (
     <div className="space-y-5">
+      <MotivationQuote />
       <KpiGrid
         problems={store.problems}
         streak={streak}
