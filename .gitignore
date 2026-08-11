@@ -12,6 +12,9 @@ dist
 dist-ssr
 out
 .next
+.env
+.env.*
+!.env.example
 *.local
 
 # Freebuff local state

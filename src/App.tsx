@@ -170,8 +170,10 @@ export default function App() {
     );
   }
 
-  // Signed out — show the login / sign-up gate.
-  if (!auth.user) {
+  // Signed out, or mid password-recovery (arrived via reset email link) —
+  // show the login gate. Recovery must gate BEFORE the user check: the reset
+  // link creates a session, so the user is technically signed in.
+  if (auth.recovery || !auth.user) {
     return (
       <Login
         onLogin={auth.login}
@@ -179,6 +181,9 @@ export default function App() {
         onRequestReset={auth.requestResetCode}
         onVerifyResetCode={auth.verifyResetCode}
         onResetPassword={auth.resetPassword}
+        authMode={auth.mode}
+        recovery={auth.recovery}
+        recoveryEmail={auth.user}
       />
     );
   }

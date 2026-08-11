@@ -1,9 +1,13 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { getSupabase, isSupabaseConfigured } from "../lib/supabase";
 
 /**
- * Client-side auth for the static export: accounts and the active session
- * live in localStorage. Not production-grade security (no backend), but the
- * right trade-off for a personal, offline-first tracker.
+ * Auth with two backends:
+ *  - Supabase (when NEXT_PUBLIC_SUPABASE_URL/ANON_KEY are set at build time):
+ *    real email/password accounts, confirmation emails, and password-reset
+ *    links handled entirely by Supabase. Sessions persist in localStorage.
+ *  - Local fallback (unconfigured): accounts + session in localStorage, and
+ *    the reset "code" is shown on screen in a demo box (no mail server).
  */
 
 const USERS_KEY = "dsa-revision-tracker:users";
@@ -77,8 +81,11 @@ function setState(next: AuthState): void {
   }
 }
 
-/** Try to sign in. Returns an error message, or null on success. */
-export function login(email: string, password: string): string | null {
+// ---------------------------------------------------------------------------
+// Local (fallback) backend — kept fully working when Supabase is unconfigured.
+// ---------------------------------------------------------------------------
+
+function loginLocal(email: string, password: string): string | null {
   const norm = email.trim().toLowerCase();
   const { users } = getSnapshot();
   const user = users.find((u) => u.email === norm);
@@ -88,8 +95,7 @@ export function login(email: string, password: string): string | null {
   return null;
 }
 
-/** Create an account and sign in. Returns an error message, or null. */
-export function signup(
+function signupLocal(
   email: string,
   password: string,
   confirm: string,
@@ -105,7 +111,7 @@ export function signup(
   return null;
 }
 
-export function logout(): void {
+function logoutLocal(): void {
   const { users } = getSnapshot();
   setState({ users, session: null });
 }
@@ -130,13 +136,7 @@ function readReset(): ResetState | null {
   return null;
 }
 
-/**
- * Start the password reset flow for an account. There is no mail server on
- * this static site, so the 6-digit code is returned here and the UI shows it
- * in a demo box ("this would normally be emailed"). The code expires after
- * 10 minutes.
- */
-export function requestResetCode(
+function requestResetCodeLocal(
   email: string,
 ): { error: string | null; demoCode: string | null } {
   const norm = email.trim().toLowerCase();
@@ -152,17 +152,15 @@ export function requestResetCode(
   try {
     localStorage.setItem(RESET_KEY, JSON.stringify(reset));
   } catch {
-    // Storage unavailable — flow cannot proceed.
-    return { error: "Storage unavailable — cannot send a reset code.", demoCode: null };
+    return {
+      error: "Storage unavailable — cannot send a reset code.",
+      demoCode: null,
+    };
   }
   return { error: null, demoCode: code };
 }
 
-/**
- * Check the reset code (and expiry) without changing anything. Returns an
- * error, or null when the code is valid.
- */
-export function verifyResetCode(email: string, code: string): string | null {
+function verifyResetCodeLocal(email: string, code: string): string | null {
   const norm = email.trim().toLowerCase();
   const reset = readReset();
   if (!reset || reset.email !== norm) return "Request a reset code first.";
@@ -178,11 +176,7 @@ export function verifyResetCode(email: string, code: string): string | null {
   return null;
 }
 
-/**
- * Verify the reset code and set a new password. Signs the user out so they
- * log in again with the new credentials. Returns an error, or null on success.
- */
-export function resetPassword(
+function resetPasswordLocal(
   email: string,
   code: string,
   newPassword: string,
@@ -190,8 +184,7 @@ export function resetPassword(
 ): string | null {
   const norm = email.trim().toLowerCase();
   const reset = readReset();
-  if (!reset || reset.email !== norm)
-    return "Request a reset code first.";
+  if (!reset || reset.email !== norm) return "Request a reset code first.";
   if (Date.now() > reset.expiresAt) {
     try {
       localStorage.removeItem(RESET_KEY);
@@ -200,8 +193,7 @@ export function resetPassword(
     }
     return "This code has expired — request a new one.";
   }
-  if (reset.code !== code.trim())
-    return "Incorrect code — check and try again.";
+  if (reset.code !== code.trim()) return "Incorrect code — check and try again.";
   if (newPassword.length < 8)
     return "Password must be at least 8 characters.";
   if (newPassword !== confirm) return "Passwords don't match.";
@@ -217,36 +209,191 @@ export function resetPassword(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Public store
+// ---------------------------------------------------------------------------
+
 export interface AuthStore {
-  /** True once the persisted session has been loaded on the client. */
+  /** True once the session has been determined on the client. */
   ready: boolean;
   /** Logged-in user's email, or null when signed out. */
   user: string | null;
-  login: (email: string, password: string) => string | null;
-  signup: (email: string, password: string, confirm: string) => string | null;
-  logout: () => void;
+  /** Which backend is active. */
+  mode: "supabase" | "local";
+  /** True when the user arrived via a password-reset link (Supabase mode). */
+  recovery: boolean;
+  login: (email: string, password: string) => Promise<string | null>;
+  signup: (
+    email: string,
+    password: string,
+    confirm: string,
+  ) => Promise<string | null>;
+  logout: () => Promise<void>;
   requestResetCode: (
     email: string,
-  ) => { error: string | null; demoCode: string | null };
-  verifyResetCode: (email: string, code: string) => string | null;
+  ) => Promise<{ error: string | null; demoCode: string | null }>;
+  verifyResetCode: (email: string, code: string) => Promise<string | null>;
   resetPassword: (
     email: string,
     code: string,
     newPassword: string,
     confirm: string,
-  ) => string | null;
+  ) => Promise<string | null>;
 }
 
 export function useAuth(): AuthStore {
-  const authState = useSyncExternalStore(
+  const fallback = useSyncExternalStore(
     subscribe,
     getSnapshot,
     () => serverSnapshot,
   );
+  const usingSupabase = isSupabaseConfigured();
+
+  const [sbReady, setSbReady] = useState(false);
+  const [sbUser, setSbUser] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState(false);
+
+  useEffect(() => {
+    if (!usingSupabase) {
+      setSbReady(true);
+      return;
+    }
+    let mounted = true;
+    let unsubscribe: (() => void) | null = null;
+    (async () => {
+      const sb = await getSupabase();
+      if (!sb || !mounted) return;
+      const { data } = await sb.auth.getSession();
+      if (!mounted) return;
+      setSbUser(data.session?.user.email ?? null);
+      setSbReady(true);
+      const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
+        if (!mounted) return;
+        if (event === "PASSWORD_RECOVERY") setRecovery(true);
+        else if (event === "SIGNED_OUT") setRecovery(false);
+        setSbUser(session?.user.email ?? null);
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
+    })();
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, [usingSupabase]);
+
+  const ready = usingSupabase ? sbReady : fallback !== serverSnapshot;
+  const user = usingSupabase ? sbUser : fallback.session;
+
+  const login = useCallback(
+    async (email: string, password: string): Promise<string | null> => {
+      if (!usingSupabase) return loginLocal(email, password);
+      const sb = await getSupabase();
+      if (!sb) return "Supabase is not configured.";
+      const { error } = await sb.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("email not confirmed"))
+          return "Confirm your email first — check your inbox for the confirmation link.";
+        return error.message;
+      }
+      return null;
+    },
+    [usingSupabase],
+  );
+
+  const signup = useCallback(
+    async (
+      email: string,
+      password: string,
+      confirm: string,
+    ): Promise<string | null> => {
+      if (!usingSupabase) return signupLocal(email, password, confirm);
+      const norm = email.trim().toLowerCase();
+      if (!EMAIL_RE.test(norm)) return "Enter a valid email address.";
+      if (password.length < 8)
+        return "Password must be at least 8 characters.";
+      if (password !== confirm) return "Passwords don't match.";
+      const sb = await getSupabase();
+      if (!sb) return "Supabase is not configured.";
+      const { data, error } = await sb.auth.signUp({ email: norm, password });
+      if (error) return error.message;
+      if (!data.session)
+        return "Account created — confirm your email to log in.";
+      return null;
+    },
+    [usingSupabase],
+  );
+
+  const logout = useCallback(async (): Promise<void> => {
+    if (!usingSupabase) {
+      logoutLocal();
+      return;
+    }
+    const sb = await getSupabase();
+    await sb?.auth.signOut();
+  }, [usingSupabase]);
+
+  const requestResetCode = useCallback(
+    async (
+      email: string,
+    ): Promise<{ error: string | null; demoCode: string | null }> => {
+      if (!usingSupabase) return requestResetCodeLocal(email);
+      const sb = await getSupabase();
+      if (!sb) return { error: "Supabase is not configured.", demoCode: null };
+      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      const { error } = await sb.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        { redirectTo },
+      );
+      if (error) return { error: error.message, demoCode: null };
+      // No demo code — a real reset link is on its way to the inbox.
+      return { error: null, demoCode: null };
+    },
+    [usingSupabase],
+  );
+
+  const verifyResetCode = useCallback(
+    async (email: string, code: string): Promise<string | null> => {
+      if (!usingSupabase) return verifyResetCodeLocal(email, code);
+      // Supabase mode has no codes — the emailed link IS the verification.
+      return "No reset code in this mode — use the link from your email.";
+    },
+    [usingSupabase],
+  );
+
+  const resetPassword = useCallback(
+    async (
+      email: string,
+      code: string,
+      newPassword: string,
+      confirm: string,
+    ): Promise<string | null> => {
+      if (!usingSupabase)
+        return resetPasswordLocal(email, code, newPassword, confirm);
+      if (newPassword.length < 8)
+        return "Password must be at least 8 characters.";
+      if (newPassword !== confirm) return "Passwords don't match.";
+      const sb = await getSupabase();
+      if (!sb) return "Supabase is not configured.";
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) return error.message;
+      // Sign out so the user logs in again with the new password.
+      await sb.auth.signOut();
+      setRecovery(false);
+      return null;
+    },
+    [usingSupabase],
+  );
+
   return useMemo(
     () => ({
-      ready: authState !== serverSnapshot,
-      user: authState.session,
+      ready,
+      user,
+      mode: usingSupabase ? "supabase" : "local",
+      recovery,
       login,
       signup,
       logout,
@@ -254,6 +401,17 @@ export function useAuth(): AuthStore {
       verifyResetCode,
       resetPassword,
     }),
-    [authState],
+    [
+      ready,
+      user,
+      usingSupabase,
+      recovery,
+      login,
+      signup,
+      logout,
+      requestResetCode,
+      verifyResetCode,
+      resetPassword,
+    ],
   );
 }

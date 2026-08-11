@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Binary,
@@ -16,22 +16,32 @@ import {
 } from "lucide-react";
 
 interface LoginProps {
-  onLogin: (email: string, password: string) => string | null;
-  onSignup: (email: string, password: string, confirm: string) => string | null;
+  onLogin: (email: string, password: string) => Promise<string | null>;
+  onSignup: (
+    email: string,
+    password: string,
+    confirm: string,
+  ) => Promise<string | null>;
   onRequestReset: (
     email: string,
-  ) => { error: string | null; demoCode: string | null };
-  onVerifyResetCode: (email: string, code: string) => string | null;
+  ) => Promise<{ error: string | null; demoCode: string | null }>;
+  onVerifyResetCode: (email: string, code: string) => Promise<string | null>;
   onResetPassword: (
     email: string,
     code: string,
     newPassword: string,
     confirm: string,
-  ) => string | null;
+  ) => Promise<string | null>;
+  /** Which auth backend is active — controls the reset flow UX. */
+  authMode: "supabase" | "local";
+  /** True when the user arrived via a Supabase password-reset link. */
+  recovery: boolean;
+  /** Email of the recovery session (for the reset form header). */
+  recoveryEmail: string | null;
 }
 
 type Mode = "login" | "signup" | "forgot";
-type ForgotPhase = "request" | "verify" | "newpass";
+type ForgotPhase = "request" | "verify" | "sent" | "newpass";
 
 export function Login({
   onLogin,
@@ -39,6 +49,9 @@ export function Login({
   onRequestReset,
   onVerifyResetCode,
   onResetPassword,
+  authMode,
+  recovery,
+  recoveryEmail,
 }: LoginProps) {
   const [mode, setMode] = useState<Mode>("login");
   const [phase, setPhase] = useState<ForgotPhase>("request");
@@ -51,6 +64,19 @@ export function Login({
   const [info, setInfo] = useState<string | null>(null);
   const [resetEmail, setResetEmail] = useState("");
   const [demoCode, setDemoCode] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Arrived via a Supabase password-reset link → jump straight to the
+  // "set new password" step, pre-filled with the account email.
+  useEffect(() => {
+    if (recovery) {
+      setMode("forgot");
+      setPhase("newpass");
+      setEmail(recoveryEmail ?? "");
+      setError(null);
+      setInfo(null);
+    }
+  }, [recovery, recoveryEmail]);
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -63,47 +89,59 @@ export function Login({
     setDemoCode(null);
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === "forgot") {
-      if (phase === "request") {
-        const { error: err, demoCode: dc } = onRequestReset(email);
-        if (err) {
-          setError(err);
-        } else {
-          setResetEmail(email.trim().toLowerCase());
-          setDemoCode(dc);
-          setError(null);
-          setCode("");
-          setPhase("verify");
+    setSubmitting(true);
+    try {
+      if (mode === "forgot") {
+        if (phase === "request") {
+          const { error: err, demoCode: dc } = await onRequestReset(email);
+          if (err) {
+            setError(err);
+          } else {
+            setResetEmail(email.trim().toLowerCase());
+            setDemoCode(dc);
+            setError(null);
+            setCode("");
+            // Supabase mode sends a real link (no code) → show the "sent"
+            // screen; local mode gets the on-screen demo code to verify.
+            setPhase(dc ? "verify" : "sent");
+          }
+        } else if (phase === "verify") {
+          const err = await onVerifyResetCode(resetEmail, code);
+          if (err) {
+            setError(err);
+          } else {
+            setError(null);
+            setPassword("");
+            setConfirm("");
+            setPhase("newpass");
+          }
+        } else if (phase === "newpass") {
+          const err = await onResetPassword(
+            resetEmail,
+            code,
+            password,
+            confirm,
+          );
+          if (err) {
+            setError(err);
+          } else {
+            switchMode("login");
+            setInfo("Password updated — log in with your new password.");
+          }
         }
-      } else if (phase === "verify") {
-        const err = onVerifyResetCode(resetEmail, code);
-        if (err) {
-          setError(err);
-        } else {
-          setError(null);
-          setPassword("");
-          setConfirm("");
-          setPhase("newpass");
-        }
-      } else {
-        const err = onResetPassword(resetEmail, code, password, confirm);
-        if (err) {
-          setError(err);
-        } else {
-          switchMode("login");
-          setInfo("Password updated — log in with your new password.");
-        }
+        return;
       }
-      return;
+      const err =
+        mode === "login"
+          ? await onLogin(email, password)
+          : await onSignup(email, password, confirm);
+      if (err) setError(err);
+      // On success the auth store flips and App swaps to the dashboard.
+    } finally {
+      setSubmitting(false);
     }
-    const err =
-      mode === "login"
-        ? onLogin(email, password)
-        : onSignup(email, password, confirm);
-    if (err) setError(err);
-    // On success the auth store flips and App swaps to the dashboard.
   };
 
   const inputBase =
@@ -149,7 +187,8 @@ export function Login({
             </button>
           )}
 
-          {/* Email */}
+          {/* Email (hidden once the reset link has been sent) */}
+          {!(mode === "forgot" && phase === "sent") && (
           <div>
             <label
               htmlFor="login-email"
@@ -173,6 +212,7 @@ export function Login({
               />
             </div>
           </div>
+          )}
 
           {/* Password (login, signup, and new-password phase) */}
           {mode !== "forgot" || phase === "newpass" ? (
@@ -276,8 +316,10 @@ export function Login({
               )}
               <button
                 type="button"
-                onClick={() => {
-                  const { error: err, demoCode: dc } = onRequestReset(email);
+                onClick={async () => {
+                  const { error: err, demoCode: dc } = await onRequestReset(
+                    email,
+                  );
                   if (err) setError(err);
                   else {
                     setDemoCode(dc);
@@ -289,6 +331,20 @@ export function Login({
                 <Send className="h-3 w-3" />
                 Resend code
               </button>
+            </div>
+          )}
+
+          {/* Reset link sent (Supabase mode — the real email is on its way) */}
+          {mode === "forgot" && phase === "sent" && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-300">
+              <p className="font-semibold">Reset link sent</p>
+              <p className="mt-0.5 text-xs text-emerald-300/80">
+                We emailed a password-reset link to{" "}
+                <span className="font-medium text-emerald-200">
+                  {resetEmail}
+                </span>
+                . Click it to set a new password — no code needed.
+              </p>
             </div>
           )}
 
@@ -323,40 +379,47 @@ export function Login({
             </p>
           )}
 
-          {/* Submit */}
-          <button
-            type="submit"
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 text-sm font-semibold text-zinc-950 shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.99]"
-          >
-            {mode === "forgot" ? (
-              phase === "request" ? (
+          {/* Submit (hidden on the "link sent" screen — go check your inbox) */}
+          {!(mode === "forgot" && phase === "sent") && (
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 text-sm font-semibold text-zinc-950 shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.99] disabled:cursor-wait disabled:opacity-70"
+            >
+              {submitting ? (
+                "Please wait…"
+              ) : mode === "forgot" ? (
+                phase === "request" ? (
+                  <>
+                    <Send className="h-4 w-4" />
+                    {authMode === "supabase"
+                      ? "Send reset link"
+                      : "Send reset code"}
+                  </>
+                ) : phase === "verify" ? (
+                  <>
+                    <ShieldCheck className="h-4 w-4" />
+                    Verify code
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="h-4 w-4" />
+                    Update password
+                  </>
+                )
+              ) : mode === "login" ? (
                 <>
-                  <Send className="h-4 w-4" />
-                  Send reset code
-                </>
-              ) : phase === "verify" ? (
-                <>
-                  <ShieldCheck className="h-4 w-4" />
-                  Verify code
+                  <LogIn className="h-4 w-4" />
+                  Log in
                 </>
               ) : (
                 <>
-                  <KeyRound className="h-4 w-4" />
-                  Update password
+                  <UserPlus className="h-4 w-4" />
+                  Create account
                 </>
-              )
-            ) : mode === "login" ? (
-              <>
-                <LogIn className="h-4 w-4" />
-                Log in
-              </>
-            ) : (
-              <>
-                <UserPlus className="h-4 w-4" />
-                Create account
-              </>
-            )}
-          </button>
+              )}
+            </button>
+          )}
 
           {/* Mode toggle (login / signup only) */}
           {mode !== "forgot" && (
