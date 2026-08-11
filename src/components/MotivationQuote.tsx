@@ -3,21 +3,29 @@
 import { useState } from "react";
 import { Quote as QuoteIcon, Shuffle } from "lucide-react";
 import { todayKey } from "../lib/spaced";
+import type { Quote } from "../lib/quotes";
 import {
   dailyQuoteIndex,
-  MOTIVATIONAL_QUOTES,
+  getQuotePool,
   randomQuoteIndex,
 } from "../lib/quotes";
 
-/**
- * A slim "fuel for the grind" strip: a deterministic quote of the day with
- * a shuffle button to cycle through more. Lives at the top of the dashboard.
- */
-export function MotivationQuote() {
-  const [idx, setIdx] = useState(() => dailyQuoteIndex(todayKey()));
-  const quote = MOTIVATIONAL_QUOTES[idx];
+interface MotivationQuoteProps {
+  /** User-authored quotes mixed into the rotation. */
+  customQuotes: Quote[];
+}
 
-  const shuffle = () => setIdx((cur) => randomQuoteIndex(cur));
+/**
+ * A slim "fuel for the grind" strip: a deterministic quote of the day (from
+ * the built-in pool plus the user's own quotes) with a shuffle button to
+ * cycle through more. Lives at the top of the dashboard.
+ */
+export function MotivationQuote({ customQuotes }: MotivationQuoteProps) {
+  const pool = getQuotePool(customQuotes);
+  const [idx, setIdx] = useState(() => dailyQuoteIndex(todayKey(), pool.length));
+  const quote = pool[idx] ?? pool[0];
+
+  const shuffle = () => setIdx((cur) => randomQuoteIndex(cur, pool.length));
 
   return (
     <div className="card relative overflow-hidden px-5 py-3.5">

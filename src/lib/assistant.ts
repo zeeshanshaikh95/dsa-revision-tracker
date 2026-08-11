@@ -9,7 +9,8 @@ import {
   totalFocusedTime,
 } from "./analytics";
 import { pickSurpriseProblem } from "./surprise";
-import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "./quotes";
+import type { Quote } from "./quotes";
+import { getQuotePool, randomQuoteIndex } from "./quotes";
 
 /**
  * Deterministic assistant for managing the problem bank. Everything runs
@@ -116,8 +117,9 @@ function helpAction(): ChatAction {
   };
 }
 
-function motivateAction(): ChatAction {
-  const quote = MOTIVATIONAL_QUOTES[randomQuoteIndex(null)];
+function motivateAction(customQuotes: Quote[]): ChatAction {
+  const pool = getQuotePool(customQuotes);
+  const quote = pool[randomQuoteIndex(null, pool.length)];
   return {
     kind: "reply",
     text: `💪 “${quote.text}” — ${quote.author}\n\nYou've got this. One problem at a time.`,
@@ -324,7 +326,11 @@ function mutationAction(
   return { kind, problem: matches[0] } as ChatAction;
 }
 
-export function parseChat(raw: string, problems: Problem[]): ChatAction {
+export function parseChat(
+  raw: string,
+  problems: Problem[],
+  customQuotes: Quote[] = [],
+): ChatAction {
   const input = raw.trim();
   const low = input.toLowerCase();
   if (!low) return { kind: "reply", text: "Say something like: what's due today?", chips: helpChips };
@@ -333,7 +339,7 @@ export function parseChat(raw: string, problems: Problem[]): ChatAction {
   if (/^(stats|summary|overview|progress|how am i doing)$/.test(low))
     return statsAction(problems);
   if (/^(motivate me|motivate|quote|inspire me|inspire|encourage me|i need motivation|give me a quote)$/.test(low))
-    return motivateAction();
+    return motivateAction(customQuotes);
   if (/^(surprise me|surprise|random|pick one for me|what should i do|give me something)$/.test(low)) {
     const p = pickSurpriseProblem(problems, todayKey());
     if (!p)

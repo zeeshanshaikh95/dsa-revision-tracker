@@ -122,17 +122,23 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
+/** The full rotation pool: built-in quotes followed by the user's custom ones. */
+export function getQuotePool(custom: Quote[]): Quote[] {
+  return custom.length > 0 ? [...MOTIVATIONAL_QUOTES, ...custom] : MOTIVATIONAL_QUOTES;
+}
+
 /** Deterministic quote index for a date key — a fresh pick each day. */
-export function dailyQuoteIndex(dateKey: string): number {
-  return hashCode(dateKey) % MOTIVATIONAL_QUOTES.length;
+export function dailyQuoteIndex(dateKey: string, poolLength: number): number {
+  if (poolLength <= 0) return 0;
+  return hashCode(dateKey) % poolLength;
 }
 
 /** A random quote index different from `current` (null for a fresh pick). */
-export function randomQuoteIndex(current: number | null): number {
-  if (MOTIVATIONAL_QUOTES.length <= 1) return 0;
-  let next = Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length);
+export function randomQuoteIndex(current: number | null, poolLength: number): number {
+  if (poolLength <= 1) return 0;
+  let next = Math.floor(Math.random() * poolLength);
   while (next === current) {
-    next = Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length);
+    next = Math.floor(Math.random() * poolLength);
   }
   return next;
 }

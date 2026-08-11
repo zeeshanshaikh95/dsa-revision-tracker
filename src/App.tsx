@@ -6,7 +6,7 @@ import { Dices, Download, PlayCircle } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
 import { pickSurpriseProblem } from "./lib/surprise";
-import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "./lib/quotes";
+import { getQuotePool, randomQuoteIndex } from "./lib/quotes";
 import { downloadText, problemsToCsv } from "./lib/export";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
 import { setSettings, useSettings } from "./hooks/useSettings";
@@ -110,12 +110,13 @@ export default function App() {
     }
     if (goalHit && !goalHitRef.current) {
       goalHitRef.current = true;
-      const q = MOTIVATIONAL_QUOTES[randomQuoteIndex(null)];
+      const pool = getQuotePool(settings.customQuotes);
+      const q = pool[randomQuoteIndex(null, pool.length)];
       notify(`🎯 Daily goal complete! “${q.text}” — ${q.author}`, "celebration");
     } else if (!goalHit) {
       goalHitRef.current = false;
     }
-  }, [goalHit, notify, auth.ready, store.ready]);
+  }, [goalHit, notify, auth.ready, store.ready, settings.customQuotes]);
 
   // Warm the lazy overlay chunks during idle time so opening the drawer or
   // quick-add modal never waits on a network fetch.
@@ -394,7 +395,7 @@ export default function App() {
 
   const dashboard = (
     <div className="space-y-5">
-      <MotivationQuote />
+      <MotivationQuote customQuotes={settings.customQuotes} />
       <KpiGrid
         problems={store.problems}
         streak={streak}
@@ -525,6 +526,10 @@ export default function App() {
               notificationsEnabled={settings.notificationsEnabled}
               onNotificationsChange={handleNotificationsChange}
               onTestNotification={handleTestNotification}
+              customQuotes={settings.customQuotes}
+              onCustomQuotesChange={(quotes) =>
+                setSettings({ customQuotes: quotes })
+              }
             />
           )}
         </div>
@@ -553,10 +558,11 @@ export default function App() {
         problems={store.problems}
         onClose={() => setReviewOpen(false)}
         onResetReview={handleResetReview}
+        customQuotes={settings.customQuotes}
       />
 
       {/* Chat assistant */}
-      <ChatBot store={store} />
+      <ChatBot store={store} customQuotes={settings.customQuotes} />
 
       {/* Toast */}
       {toast && (

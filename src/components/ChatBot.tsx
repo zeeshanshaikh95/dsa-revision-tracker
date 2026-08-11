@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, MessageSquare, Send, X } from "lucide-react";
 import type { Store } from "../hooks/useStore";
+import type { Quote } from "../lib/quotes";
 import { parseChat } from "../lib/assistant";
 import { relativeDay, todayKey } from "../lib/spaced";
 
@@ -21,7 +22,7 @@ const WELCOME: Msg = {
   chips: ["What's due today?", "Add \"Two Sum\" difficulty=easy", "Stats"],
 };
 
-export function ChatBot({ store }: { store: Store }) {
+export function ChatBot({ store, customQuotes }: { store: Store; customQuotes: Quote[] }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
@@ -70,7 +71,7 @@ export function ChatBot({ store }: { store: Store }) {
       return;
     }
 
-    const action = parseChat(text, store.problems);
+    const action = parseChat(text, store.problems, customQuotes);
     switch (action.kind) {
       case "reply":
         respond(action.text, action.chips);

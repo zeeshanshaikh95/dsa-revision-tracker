@@ -11,9 +11,12 @@ import {
   Loader2,
   Minus,
   Plus,
+  Quote as QuoteIcon,
   Target,
+  Trash2,
   User,
 } from "lucide-react";
+import type { Quote } from "../lib/quotes";
 import type { SyncStatus } from "../hooks/useDataSync";
 
 interface SettingsProps {
@@ -29,6 +32,9 @@ interface SettingsProps {
   /** Turn notifications on/off; resolves to whether they're actually on. */
   onNotificationsChange: (enabled: boolean) => Promise<boolean>;
   onTestNotification: () => void;
+  /** User-authored quotes mixed into the daily rotation. */
+  customQuotes: Quote[];
+  onCustomQuotesChange: (quotes: Quote[]) => void;
 }
 
 const SETUP_URL =
@@ -44,9 +50,41 @@ export const Settings = memo(function Settings({
   notificationsEnabled,
   onNotificationsChange,
   onTestNotification,
+  customQuotes,
+  onCustomQuotesChange,
 }: SettingsProps) {
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyNote, setNotifyNote] = useState<string | null>(null);
+  const [quoteText, setQuoteText] = useState("");
+  const [quoteAuthor, setQuoteAuthor] = useState("");
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const addQuote = () => {
+    const text = quoteText.trim();
+    if (!text) {
+      setQuoteError("Write the quote first.");
+      return;
+    }
+    if (text.length > 200) {
+      setQuoteError("Keep it under 200 characters.");
+      return;
+    }
+    if (customQuotes.length >= 50) {
+      setQuoteError("You can save up to 50 custom quotes.");
+      return;
+    }
+    onCustomQuotesChange([
+      ...customQuotes,
+      { text, author: quoteAuthor.trim() || "You" },
+    ]);
+    setQuoteText("");
+    setQuoteAuthor("");
+    setQuoteError(null);
+  };
+
+  const removeQuote = (index: number) => {
+    onCustomQuotesChange(customQuotes.filter((_, i) => i !== index));
+  };
 
   const toggleNotifications = async () => {
     if (notificationsEnabled) {
@@ -153,6 +191,85 @@ export const Settings = memo(function Settings({
               : ` · ${dailyGoal - solvedToday} to go`}
           </div>
         </div>
+      </section>
+
+      {/* My quotes */}
+      <section className="card p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <QuoteIcon className="h-4 w-4 text-emerald-400" />
+          My Quotes
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Add your own lines and they&apos;re mixed into the daily rotation —
+          the dashboard strip, the chat&apos;s &quot;motivate me&quot;, and the
+          goal-complete toast.
+        </p>
+
+        <div className="mt-4 space-y-2.5">
+          <textarea
+            value={quoteText}
+            onChange={(e) => {
+              setQuoteText(e.target.value);
+              setQuoteError(null);
+            }}
+            placeholder={"Write your quote… e.g. “Small steps every day beat big leaps once in a while.”"}
+            maxLength={200}
+            rows={2}
+            spellCheck={false}
+            className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              value={quoteAuthor}
+              onChange={(e) => setQuoteAuthor(e.target.value)}
+              placeholder="Author (optional, defaults to You)"
+              maxLength={40}
+              className="h-9 flex-1 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+            <button
+              onClick={addQuote}
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-all hover:bg-emerald-400 active:scale-95"
+            >
+              Add quote
+            </button>
+          </div>
+          {quoteError && (
+            <p className="text-xs font-medium text-rose-400">{quoteError}</p>
+          )}
+        </div>
+
+        {customQuotes.length > 0 ? (
+          <ul className="mt-4 space-y-2">
+            {customQuotes.map((q, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2.5"
+              >
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm italic leading-relaxed text-zinc-300">
+                    “{q.text}”
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-zinc-500">
+                    — {q.author}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removeQuote(i)}
+                  aria-label={`Remove quote: ${q.text}`}
+                  title="Remove this quote"
+                  className="shrink-0 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-4 text-xs text-zinc-600">
+            No custom quotes yet — the rotation is running on the built-in 26.
+          </p>
+        )}
       </section>
 
       {/* Notifications */}

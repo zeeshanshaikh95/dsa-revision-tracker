@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import type { Quote } from "../lib/quotes";
 
 export interface AppSettings {
   /** Target number of problems to solve per day. */
   dailyGoal: number;
   /** Whether the browser should notify when reviews come due. */
   notificationsEnabled: boolean;
+  /** User-authored quotes, mixed into the daily rotation. */
+  customQuotes: Quote[];
 }
 
 export const SETTINGS_STORAGE_KEY = "dsa-revision-tracker:settings:v1";
@@ -14,6 +17,7 @@ export const SETTINGS_STORAGE_KEY = "dsa-revision-tracker:settings:v1";
 export const DEFAULT_SETTINGS: AppSettings = {
   dailyGoal: 3,
   notificationsEnabled: false,
+  customQuotes: [],
 };
 
 const listeners = new Set<() => void>();
@@ -25,9 +29,23 @@ function sanitize(parsed: Partial<AppSettings>): AppSettings {
     Number.isFinite(raw) && raw >= 1
       ? Math.min(raw, 50)
       : DEFAULT_SETTINGS.dailyGoal;
+  const customQuotes = Array.isArray(parsed.customQuotes)
+    ? parsed.customQuotes
+        .filter(
+          (q): q is Quote =>
+            !!q &&
+            typeof q.text === "string" &&
+            q.text.trim().length > 0 &&
+            q.text.trim().length <= 200 &&
+            (q.author === undefined || typeof q.author === "string"),
+        )
+        .map((q) => ({ text: q.text.trim(), author: q.author?.trim() }))
+        .slice(0, 50)
+    : [];
   return {
     dailyGoal,
     notificationsEnabled: parsed.notificationsEnabled === true,
+    customQuotes,
   };
 }
 

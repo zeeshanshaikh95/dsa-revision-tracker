@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, Quote, SkipForward, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Quote as QuoteIcon,
+  SkipForward,
+  X,
+} from "lucide-react";
 import type { Problem } from "../types";
 import { relativeDay, reviewStatus, todayKey } from "../lib/spaced";
 import { generateRevisionNotes } from "../lib/revisionNotes";
-import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "../lib/quotes";
+import type { Quote } from "../lib/quotes";
+import { getQuotePool, randomQuoteIndex } from "../lib/quotes";
 import {
   ConfidenceIndicator,
   DifficultyBadge,
@@ -19,6 +26,8 @@ interface ReviewSessionProps {
   onClose: () => void;
   /** Advance the review interval for a problem (the "solved" action). */
   onResetReview: (id: string) => void;
+  /** User-authored quotes mixed into the celebratory pick. */
+  customQuotes: Quote[];
 }
 
 /**
@@ -30,7 +39,10 @@ export function ReviewSession({
   problems,
   onClose,
   onResetReview,
+  customQuotes,
 }: ReviewSessionProps) {
+  // Stable celebratory quote pool for the completion screen.
+  const donePool = getQuotePool(customQuotes);
   const today = todayKey();
 
   // Snapshot the due queue when the session opens, most urgent first.
@@ -43,7 +55,7 @@ export function ReviewSession({
 
   const [index, setIndex] = useState(0);
   // Stable celebratory quote for the completion screen.
-  const [doneQuote] = useState(() => randomQuoteIndex(null));
+  const [doneQuote] = useState(() => randomQuoteIndex(null, donePool.length));
 
   // Reset progress whenever a new session starts.
   useEffect(() => {
@@ -118,10 +130,10 @@ export function ReviewSession({
               skipped ones stay in your due queue.
             </p>
             <p className="mx-auto max-w-sm text-center text-sm italic leading-relaxed text-zinc-400">
-              <Quote className="mx-auto mb-1 h-4 w-4 text-emerald-400/80" />
-              “{MOTIVATIONAL_QUOTES[doneQuote].text}”
+              <QuoteIcon className="mx-auto mb-1 h-4 w-4 text-emerald-400/80" />
+              “{donePool[doneQuote]?.text}”
               <span className="ml-2 block not-italic text-xs font-semibold text-zinc-600">
-                — {MOTIVATIONAL_QUOTES[doneQuote].author}
+                — {donePool[doneQuote]?.author}
               </span>
             </p>
             <button
