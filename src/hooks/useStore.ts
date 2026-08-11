@@ -19,17 +19,19 @@ export interface PersistedState {
   activity: string[];
   /**
    * Sync bookkeeping. Every local mutation stamps `updatedAt` (client clock);
-   * `hydrate()` stamps it with the DB row's timestamp. The sync layer uses it
+   * `hydrate()` stamps it with the cloud's timestamp. The sync layer uses it
    * to tell "this change came from the cloud" apart from "the user edited".
+   * `deletedIds` are tombstones for problems deleted locally but not yet
+   * pushed — the sync layer deletes exactly those rows, never a blanket sweep.
    */
-  meta: { updatedAt: string };
+  meta: { updatedAt: string; deletedIds: string[] };
 }
 
 const EPOCH = "1970-01-01T00:00:00.000Z";
 const serverSnapshot: PersistedState = {
   problems: [],
   activity: [],
-  meta: { updatedAt: EPOCH },
+  meta: { updatedAt: EPOCH, deletedIds: [] },
 };
 
 function nowIso(): string {
@@ -44,8 +46,13 @@ function loadState(storageKey: string, seed: boolean): PersistedState {
       if (Array.isArray(parsed.problems) && Array.isArray(parsed.activity)) {
         const meta =
           parsed.meta && typeof parsed.meta.updatedAt === "string"
-            ? parsed.meta
-            : { updatedAt: EPOCH };
+            ? {
+                updatedAt: parsed.meta.updatedAt,
+                deletedIds: Array.isArray(parsed.meta.deletedIds)
+                  ? parsed.meta.deletedIds
+                  : [],
+              }
+            : { updatedAt: EPOCH, deletedIds: [] };
         return { problems: parsed.problems, activity: parsed.activity, meta };
       }
     }
@@ -55,7 +62,7 @@ function loadState(storageKey: string, seed: boolean): PersistedState {
   return {
     problems: seed ? buildSeed() : [],
     activity: seed ? [todayKey()] : [],
-    meta: { updatedAt: EPOCH },
+    meta: { updatedAt: EPOCH, deletedIds: [] },
   };
 }
 
@@ -65,6 +72,8 @@ interface StoreInstance {
   getServerSnapshot: () => PersistedState;
   /** Replace the bank with cloud data (marks it as synced state). */
   hydrate: (problems: Problem[], activity: string[], updatedAt: string) => void;
+  /** Drop synced tombstones without stamping a new updatedAt. */
+  ackTombstones: () => void;
   addProblem: (input: NewProblemInput) => Problem;
   updateProblem: (id: string, patch: Partial<Problem>) => void;
   deleteProblem: (id: string) => void;
@@ -103,12 +112,16 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     listeners.forEach((l) => l());
   }
 
-  /** Mutations stamp `updatedAt` so the sync layer sees a user edit. */
+  /** Mutations stamp `updatedAt` so the sync layer sees a user edit. The
+   *  updater may carry meta.deletedIds additions (tombstones). */
   function setState(updater: (prev: PersistedState) => PersistedState): void {
     const prev = getSnapshot();
     const next = updater(prev);
     if (next !== prev) {
-      commit({ ...next, meta: { updatedAt: nowIso() } });
+      commit({
+        ...next,
+        meta: { ...next.meta, updatedAt: nowIso() },
+      });
     }
   }
 
@@ -124,7 +137,18 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     activity: string[],
     updatedAt: string,
   ): void => {
-    commit({ problems, activity, meta: { updatedAt } });
+    // Cloud data replaces the bank; tombstones are cleared (they were either
+    // pushed or the cloud is newer, so the cloud's rows are authoritative).
+    commit({ problems, activity, meta: { updatedAt, deletedIds: [] } });
+  };
+
+  /** Called by the sync layer after a successful push clears the tombstones. */
+  const ackTombstones = (): void => {
+    if (getSnapshot().meta.deletedIds.length === 0) return;
+    commit({
+      ...getSnapshot(),
+      meta: { ...getSnapshot().meta, deletedIds: [] },
+    });
   };
 
   const addProblem = (input: NewProblemInput): Problem => {
@@ -162,12 +186,30 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.filter((p) => p.id !== id),
+      meta: {
+        ...prev.meta,
+        deletedIds: prev.meta.deletedIds.includes(id)
+          ? prev.meta.deletedIds
+          : [...prev.meta.deletedIds, id],
+      },
     }));
   };
 
   /** Wipe the problem bank. Keeps the activity log (streak history). */
   const clearAllProblems = (): void => {
-    setState((prev) => recordActivity({ ...prev, problems: [] }));
+    setState((prev) =>
+      recordActivity({
+        ...prev,
+        problems: [],
+        meta: {
+          ...prev.meta,
+          deletedIds: [
+            ...prev.meta.deletedIds,
+            ...prev.problems.map((p) => p.id),
+          ],
+        },
+      }),
+    );
   };
 
   const toggleStatus = (id: string): void => {
@@ -213,6 +255,7 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     getSnapshot,
     getServerSnapshot,
     hydrate,
+    ackTombstones,
     addProblem,
     updateProblem,
     deleteProblem,
@@ -251,6 +294,7 @@ export function useStore(storageKey: string, seed: boolean): Store {
       getSnapshot: instance.getSnapshot,
       getServerSnapshot: instance.getServerSnapshot,
       hydrate: instance.hydrate,
+      ackTombstones: instance.ackTombstones,
       addProblem: instance.addProblem,
       updateProblem: instance.updateProblem,
       deleteProblem: instance.deleteProblem,

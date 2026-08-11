@@ -1,15 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Problem } from "../types";
 import { useAuth } from "./useAuth";
 import type { Store } from "./useStore";
-import {
-  fetchBank,
-  loadLegacyBank,
-  tsToMs,
-  upsertBank,
-} from "../lib/sync";
+import { fetchBank, loadLegacyBank, tsToMs, upsertBank } from "../lib/sync";
 
 export type SyncStatus = "off" | "loading" | "synced" | "error";
 
@@ -43,36 +37,38 @@ export function useDataSync(store: Store): DataSync {
   const lastHandledTs = useRef<string | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  const push = useCallback(
-    async (problems: Problem[], activity: string[]) => {
-      if (!uid) return;
-      const updatedAt = new Date().toISOString();
-      try {
-        await upsertBank(uid, problems, activity, updatedAt);
-        setStatusSafe("synced");
-      } catch {
-        // Offline or table not created yet — data stays local and the next
-        // mutation (or next login) retries.
-        setStatusSafe("error");
-      }
-    },
-    [uid, setStatusSafe],
-  );
+  const push = useCallback(async () => {
+    if (!uid) return;
+    const snap = store.getSnapshot();
+    const updatedAt = new Date().toISOString();
+    try {
+      await upsertBank(
+        uid,
+        snap.problems,
+        snap.activity,
+        snap.meta.deletedIds,
+        updatedAt,
+      );
+      if (snap.meta.deletedIds.length > 0) store.ackTombstones();
+      setStatusSafe("synced");
+    } catch {
+      // Offline or table not created yet — data stays local and the next
+      // mutation (or next login) retries.
+      setStatusSafe("error");
+    }
+  }, [uid, store, setStatusSafe]);
 
-  const schedulePush = useCallback(
-    (snap: ReturnType<Store["getSnapshot"]>) => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null;
-        const current = store.getSnapshot();
-        if (current.meta.updatedAt === lastHandledTs.current) return;
-        void push(current.problems, current.activity).then(() => {
-          lastHandledTs.current = current.meta.updatedAt;
-        });
-      }, PUSH_DEBOUNCE_MS);
-    },
-    [store, push],
-  );
+  const schedulePush = useCallback(() => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      const current = store.getSnapshot();
+      if (current.meta.updatedAt === lastHandledTs.current) return;
+      void push().then(() => {
+        lastHandledTs.current = store.getSnapshot().meta.updatedAt;
+      });
+    }, PUSH_DEBOUNCE_MS);
+  }, [store, push]);
 
   // Initial load: hydrate from the cloud, or push local (migrating the
   // legacy bank on a user's first login).
@@ -99,11 +95,11 @@ export function useDataSync(store: Store): DataSync {
         if (dbTs > localTs) {
           // Cloud is newer (or the local cache predates sync) — hydrate.
           lastHandledTs.current = row.updated_at;
-          store.hydrate(row.problems ?? [], row.activity ?? [], row.updated_at);
+          store.hydrate(row.problems, row.activity, row.updated_at);
           setStatusSafe("synced");
         } else {
           // Local is newer — push it up.
-          await push(snap.problems, snap.activity);
+          await push();
           lastHandledTs.current = snap.meta.updatedAt;
         }
       } else {
@@ -112,10 +108,11 @@ export function useDataSync(store: Store): DataSync {
         // has your data first).
         const legacy =
           snap.problems.length === 0 ? loadLegacyBank() : null;
-        const problems = legacy ? legacy.problems : snap.problems;
-        const activity = legacy ? legacy.activity : snap.activity;
-        await push(problems, activity);
-        lastHandledTs.current = snap.meta.updatedAt;
+        if (legacy) {
+          store.hydrate(legacy.problems, legacy.activity, snap.meta.updatedAt);
+        }
+        await push();
+        lastHandledTs.current = store.getSnapshot().meta.updatedAt;
       }
     })();
     return () => {
@@ -129,7 +126,7 @@ export function useDataSync(store: Store): DataSync {
     return store.subscribe(() => {
       const snap = store.getSnapshot();
       if (snap.meta.updatedAt === lastHandledTs.current) return;
-      schedulePush(snap);
+      schedulePush();
     });
   }, [active, store, schedulePush]);
 
@@ -142,7 +139,7 @@ export function useDataSync(store: Store): DataSync {
         timerRef.current = null;
         const snap = store.getSnapshot();
         if (snap.meta.updatedAt !== lastHandledTs.current) {
-          void push(snap.problems, snap.activity);
+          void push();
         }
       }
     };

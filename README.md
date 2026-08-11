@@ -59,28 +59,52 @@ The next push to `main` builds with those values inlined and the app switches to
 
 ### Sync your problem bank across devices
 
-Once Supabase is enabled, each user's bank is stored in a `user_banks` table and syncs across devices:
+Once Supabase is enabled, the dashboard reads and writes a **`problems` table** (one row per problem) plus a `user_profiles` row for the activity log, synced across devices:
 
 - the browser keeps a per-user `localStorage` cache (instant first paint, works offline);
-- every change is debounce-pushed to the cloud (and flushed when you close the tab);
-- on login the cloud row wins when it's newer, local wins when it's newer (last-write-wins);
+- every change is debounce-pushed to the cloud (and flushed when you close the tab); deletes are tracked as tombstones so one device's removal never erases another device's additions;
+- on login the cloud bank wins when it's newer, local wins when it's newer (last-write-wins);
 - **first login migrates your existing bank automatically** — but log in from the device that already has your data, because that's the bank the cloud starts with.
 
-Create the table once in the Supabase SQL editor (this also enforces per-user isolation via row-level security):
+Create the tables once in the Supabase SQL editor (row-level security enforces per-user isolation):
 
 ```sql
-create table if not exists public.user_banks (
+create table if not exists public.problems (
+  id               uuid primary key,
+  user_id          uuid not null references auth.users (id) on delete cascade,
+  title            text not null,
+  url              text not null,
+  module           text not null,
+  difficulty       text not null,
+  confidence       text not null,
+  status           text not null default 'active',
+  pattern          text not null,
+  intuition        text not null default '',
+  time_complexity  text not null default '',
+  space_complexity text not null default '',
+  last_solved      date not null,
+  last_duration    text,
+  next_review      date not null,
+  review_count     integer not null default 0,
+  created_at       date not null,
+  updated_at       timestamptz not null default now()
+);
+create table if not exists public.user_profiles (
   user_id    uuid primary key references auth.users (id) on delete cascade,
-  problems   jsonb not null default '[]'::jsonb,
   activity   jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
-alter table public.user_banks enable row level security;
+alter table public.problems enable row level security;
+alter table public.user_profiles enable row level security;
 
-create policy "Users manage their own bank"
-  on public.user_banks for all
+create policy "Users manage their own problems"
+  on public.problems for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+create policy "Users manage their own profile"
+  on public.user_profiles for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 ```
 
-Until the table exists the app keeps working locally — the header shows a small offline/synced indicator so you can see the state.
+Until the tables exist the app keeps working fully offline — the header shows a small synced/offline indicator so you can see the state.
