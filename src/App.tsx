@@ -59,6 +59,22 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Warm the lazy overlay chunks during idle time so opening the drawer or
+  // quick-add modal never waits on a network fetch.
+  useEffect(() => {
+    const idle =
+      window.requestIdleCallback ??
+      ((cb: () => void) => window.setTimeout(cb, 1000));
+    const handle = idle(() => {
+      void import("./components/Drawer");
+      void import("./components/QuickAddModal");
+    });
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
+    };
+  }, []);
+
   const handleSubmit = (values: ProblemFormValues) => {
     if (editing) {
       store.updateProblem(editing.id, values);
@@ -121,6 +137,15 @@ export default function App() {
     setDrawerProblem(p);
   }, []);
 
+  const showDue = useCallback(() => {
+    setNav("dashboard");
+    setSearch("");
+    setTableFilter("due");
+    notify(
+      `Showing ${dueCount} problem${dueCount === 1 ? "" : "s"} due for review`,
+    );
+  }, [dueCount, notify]);
+
   // Persisted state loads via useSyncExternalStore before first paint on the
   // client; during prerender/hydration `ready` is false and we show a shell.
   // Must come after all hooks so the hook order stays stable across renders.
@@ -134,13 +159,6 @@ export default function App() {
       </div>
     );
   }
-
-  const showDue = () => {
-    setNav("dashboard");
-    setSearch("");
-    setTableFilter("due");
-    notify(`Showing ${dueCount} problem${dueCount === 1 ? "" : "s"} due for review`);
-  };
 
   const dashboard = (
     <div className="space-y-5">

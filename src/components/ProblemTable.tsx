@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -242,6 +242,9 @@ export function ProblemTable({
   const [sortKey, setSortKey] = useState<SortKey>("nextReview");
   const [sortAsc, setSortAsc] = useState(true);
   const today = todayKey();
+  // Keep the input urgent; let the filtered/sorted list trail by a tick so
+  // fast typing never blocks the main thread.
+  const deferredSearch = useDeferredValue(search);
 
   const counts = useMemo(
     () => ({
@@ -255,7 +258,7 @@ export function ProblemTable({
   );
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     let list = problems.filter((p) => {
       if (filter === "due")
         return p.status === "active" && reviewStatus(p, today) !== "safe";
@@ -286,7 +289,7 @@ export function ProblemTable({
       if (aScore !== bScore) return aScore - bScore;
       return a.nextReview.localeCompare(b.nextReview) * dir;
     });
-  }, [problems, search, filter, sortKey, sortAsc, today]);
+  }, [problems, deferredSearch, filter, sortKey, sortAsc, today]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {

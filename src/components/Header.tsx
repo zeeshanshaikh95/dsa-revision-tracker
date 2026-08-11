@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Flame, Plus, Search, X } from "lucide-react";
 
 interface HeaderProps {
@@ -8,7 +9,7 @@ interface HeaderProps {
   onQuickAdd: () => void;
 }
 
-export function Header({
+export const Header = memo(function Header({
   search,
   onSearch,
   streak,
@@ -90,4 +91,4 @@ export function Header({
       </div>
     </header>
   );
-}
+});

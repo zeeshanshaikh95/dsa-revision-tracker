@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { CheckCircle2, Flame, Layers, ListChecks, Zap } from "lucide-react";
 import type { Problem } from "../types";
 import { moduleProgress, reviewStatus, todayKey } from "../lib/spaced";
@@ -9,7 +10,11 @@ interface KpiGridProps {
   onShowDue: () => void;
 }
 
-export function KpiGrid({ problems, streak, onShowDue }: KpiGridProps) {
+export const KpiGrid = memo(function KpiGrid({
+  problems,
+  streak,
+  onShowDue,
+}: KpiGridProps) {
   const total = problems.length;
   const solved = problems.filter((p) => p.status === "completed").length;
   const pct = total === 0 ? 0 : Math.round((solved / total) * 100);
@@ -165,4 +170,4 @@ export function KpiGrid({ problems, streak, onShowDue }: KpiGridProps) {
       </div>
     </section>
   );
-}
+});
