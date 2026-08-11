@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -44,6 +44,189 @@ interface ProblemTableProps {
   onResetReview: (id: string) => void;
 }
 
+interface RowProps {
+  problem: Problem;
+  today: string;
+  onSelect: (problem: Problem) => void;
+  onToggleStatus: (id: string) => void;
+  onEdit: (problem: Problem) => void;
+  onDelete: (id: string) => void;
+  onResetReview: (id: string) => void;
+}
+
+/**
+ * A single table row. Memoized so typing in search/filters (or changing
+ * unrelated rows) doesn't re-render the whole table.
+ */
+const ProblemRow = memo(function ProblemRow({
+  problem: p,
+  today,
+  onSelect,
+  onToggleStatus,
+  onEdit,
+  onDelete,
+  onResetReview,
+}: RowProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const status = reviewStatus(p, today);
+
+  // Close this row's menu on outside click / Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setConfirmDelete(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  return (
+    <tr
+      onClick={() => onSelect(p)}
+      className="group cursor-pointer border-b border-zinc-800/50 transition-colors last:border-0 hover:bg-zinc-800/40"
+    >
+      {/* Status checkbox */}
+      <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+        <button
+          role="checkbox"
+          aria-checked={p.status === "completed"}
+          aria-label={
+            p.status === "completed"
+              ? `Reopen ${p.title}`
+              : `Mark ${p.title} complete`
+          }
+          onClick={() => onToggleStatus(p.id)}
+          className={`flex h-5 w-5 items-center justify-center rounded-md border transition-all ${
+            p.status === "completed"
+              ? "border-emerald-500 bg-emerald-500 text-zinc-950"
+              : "border-zinc-700 bg-zinc-900 hover:border-emerald-500/70"
+          }`}
+        >
+          {p.status === "completed" && (
+            <Check className="h-3.5 w-3.5" strokeWidth={3} />
+          )}
+        </button>
+      </td>
+
+      {/* Title */}
+      <td className="max-w-[280px] px-2 py-3.5">
+        <div className="flex items-center gap-2">
+          <a
+            href={p.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="group/link inline-flex items-center gap-1 truncate text-sm font-semibold text-zinc-100 transition-colors hover:text-emerald-400"
+            title={`Open ${p.title}`}
+          >
+            <span className="truncate">{p.title}</span>
+            <ExternalLink className="h-3 w-3 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover/link:opacity-100" />
+          </a>
+          {p.status === "completed" && <CompletedMark />}
+        </div>
+        <p className="mt-0.5 truncate text-xs text-zinc-600">{p.pattern}</p>
+      </td>
+
+      <td className="px-2 py-3.5">
+        <ModuleTag module={p.module} />
+      </td>
+
+      {/* Review status */}
+      <td className="px-2 py-3.5">
+        <ReviewStatusBadge status={status} />
+      </td>
+
+      {/* Confidence */}
+      <td className="px-2 py-3.5">
+        <ConfidenceIndicator confidence={p.confidence} />
+      </td>
+
+      <td className="px-2 py-3.5">
+        <DifficultyBadge difficulty={p.difficulty} />
+      </td>
+
+      {/* Next review */}
+      <td className="whitespace-nowrap px-2 py-3.5 font-mono text-xs text-zinc-500">
+        {relativeDay(p.nextReview, today)}
+      </td>
+
+      {/* Actions */}
+      <td className="px-2 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="relative inline-block" ref={menuRef}>
+          <button
+            onClick={() => {
+              setMenuOpen((v) => !v);
+              setConfirmDelete(false);
+            }}
+            aria-label={`Actions for ${p.title}`}
+            className="rounded-lg p-1.5 text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700/60 hover:text-zinc-200 focus:opacity-100"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-20 mt-1 w-48 animate-scale-in rounded-lg border border-zinc-800 bg-zinc-900 p-1 text-left shadow-2xl">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEdit(p);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              >
+                <Pencil className="h-3.5 w-3.5 text-zinc-500" />
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onResetReview(p.id);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
+                Reset review cycle
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDelete) {
+                    onDelete(p.id);
+                    setMenuOpen(false);
+                    setConfirmDelete(false);
+                  } else {
+                    setConfirmDelete(true);
+                  }
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors ${
+                  confirmDelete
+                    ? "bg-rose-500/15 font-semibold text-rose-400"
+                    : "text-zinc-300 hover:bg-zinc-800 hover:text-rose-400"
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-rose-400/80" />
+                {confirmDelete ? "Confirm delete?" : "Delete"}
+              </button>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
+
 export function ProblemTable({
   problems,
   filter,
@@ -56,10 +239,8 @@ export function ProblemTable({
   onDelete,
   onResetReview,
 }: ProblemTableProps) {
-  const [menuId, setMenuId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("nextReview");
   const [sortAsc, setSortAsc] = useState(true);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const today = todayKey();
 
   const counts = useMemo(
@@ -96,8 +277,7 @@ export function ProblemTable({
       return p.nextReview.localeCompare(today);
     };
     return [...list].sort((a, b) => {
-      if (sortKey === "title")
-        return a.title.localeCompare(b.title) * dir;
+      if (sortKey === "title") return a.title.localeCompare(b.title) * dir;
       if (sortKey === "difficulty")
         return a.difficulty.localeCompare(b.difficulty) * dir;
       // Default: due items first (overdue → today → safe), then by date.
@@ -107,30 +287,6 @@ export function ProblemTable({
       return a.nextReview.localeCompare(b.nextReview) * dir;
     });
   }, [problems, search, filter, sortKey, sortAsc, today]);
-
-  // Close the row menu on outside click / Escape.
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!menuId) return;
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuId(null);
-        setConfirmDeleteId(null);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuId(null);
-        setConfirmDeleteId(null);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menuId]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -143,7 +299,9 @@ export function ProblemTable({
 
   const SortIcon = ({ col }: { col: SortKey }) => {
     if (sortKey !== col)
-      return <ChevronsUpDown className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />;
+      return (
+        <ChevronsUpDown className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60" />
+      );
     return sortAsc ? (
       <ChevronUp className="h-3 w-3 text-emerald-400" />
     ) : (
@@ -246,142 +404,18 @@ export function ProblemTable({
                 </td>
               </tr>
             )}
-            {visible.map((p) => {
-              const status = reviewStatus(p, today);
-              return (
-                <tr
-                  key={p.id}
-                  onClick={() => onSelect(p)}
-                  className="group cursor-pointer border-b border-zinc-800/50 transition-colors last:border-0 hover:bg-zinc-800/40"
-                >
-                  {/* Status checkbox */}
-                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      role="checkbox"
-                      aria-checked={p.status === "completed"}
-                      aria-label={
-                        p.status === "completed"
-                          ? `Reopen ${p.title}`
-                          : `Mark ${p.title} complete`
-                      }
-                      onClick={() => onToggleStatus(p.id)}
-                      className={`flex h-5 w-5 items-center justify-center rounded-md border transition-all ${
-                        p.status === "completed"
-                          ? "border-emerald-500 bg-emerald-500 text-zinc-950"
-                          : "border-zinc-700 bg-zinc-900 hover:border-emerald-500/70"
-                      }`}
-                    >
-                      {p.status === "completed" && (
-                        <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                      )}
-                    </button>
-                  </td>
-
-                  {/* Title */}
-                  <td className="max-w-[280px] px-2 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="group/link inline-flex items-center gap-1 truncate text-sm font-semibold text-zinc-100 transition-colors hover:text-emerald-400"
-                        title={`Open ${p.title}`}
-                      >
-                        <span className="truncate">{p.title}</span>
-                        <ExternalLink className="h-3 w-3 shrink-0 text-zinc-600 opacity-0 transition-opacity group-hover/link:opacity-100" />
-                      </a>
-                      {p.status === "completed" && <CompletedMark />}
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-zinc-600">
-                      {p.pattern}
-                    </p>
-                  </td>
-
-                  <td className="px-2 py-3.5">
-                    <ModuleTag module={p.module} />
-                  </td>
-
-                  {/* Review status */}
-                  <td className="px-2 py-3.5">
-                    <ReviewStatusBadge status={status} />
-                  </td>
-
-                  {/* Confidence */}
-                  <td className="px-2 py-3.5">
-                    <ConfidenceIndicator confidence={p.confidence} />
-                  </td>
-
-                  <td className="px-2 py-3.5">
-                    <DifficultyBadge difficulty={p.difficulty} />
-                  </td>
-
-                  {/* Next review */}
-                  <td className="whitespace-nowrap px-2 py-3.5 font-mono text-xs text-zinc-500">
-                    {relativeDay(p.nextReview, today)}
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-2 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="relative inline-block" ref={menuRef}>
-                      <button
-                        onClick={() => {
-                          setMenuId(menuId === p.id ? null : p.id);
-                          setConfirmDeleteId(null);
-                        }}
-                        aria-label={`Actions for ${p.title}`}
-                        className="rounded-lg p-1.5 text-zinc-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-zinc-700/60 hover:text-zinc-200 focus:opacity-100"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                      {menuId === p.id && (
-                        <div className="absolute right-0 top-full z-20 mt-1 w-48 animate-scale-in rounded-lg border border-zinc-800 bg-zinc-900 p-1 text-left shadow-2xl">
-                          <button
-                            onClick={() => {
-                              setMenuId(null);
-                              onEdit(p);
-                            }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                          >
-                            <Pencil className="h-3.5 w-3.5 text-zinc-500" />
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setMenuId(null);
-                              onResetReview(p.id);
-                            }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
-                            Reset review cycle
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirmDeleteId === p.id) {
-                                onDelete(p.id);
-                                setMenuId(null);
-                                setConfirmDeleteId(null);
-                              } else {
-                                setConfirmDeleteId(p.id);
-                              }
-                            }}
-                            className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors ${
-                              confirmDeleteId === p.id
-                                ? "bg-rose-500/15 font-semibold text-rose-400"
-                                : "text-zinc-300 hover:bg-zinc-800 hover:text-rose-400"
-                            }`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-rose-400/80" />
-                            {confirmDeleteId === p.id ? "Confirm delete?" : "Delete"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {visible.map((p) => (
+              <ProblemRow
+                key={p.id}
+                problem={p}
+                today={today}
+                onSelect={onSelect}
+                onToggleStatus={onToggleStatus}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onResetReview={onResetReview}
+              />
+            ))}
           </tbody>
         </table>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { BarChart3, CheckCircle2, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
@@ -10,8 +11,17 @@ import { Sidebar, type NavKey } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
-import { QuickAddModal, type ProblemFormValues } from "./components/QuickAddModal";
-import { Drawer } from "./components/Drawer";
+import type { ProblemFormValues } from "./components/QuickAddModal";
+
+// Code-split the overlays: they only render when opened, so their chunks are
+// fetched on demand instead of inflating the initial bundle.
+const QuickAddModal = dynamic(
+  () => import("./components/QuickAddModal").then((m) => m.QuickAddModal),
+  { ssr: false },
+) as typeof import("./components/QuickAddModal").QuickAddModal;
+const Drawer = dynamic(() => import("./components/Drawer").then((m) => m.Drawer), {
+  ssr: false,
+}) as typeof import("./components/Drawer").Drawer;
 
 interface Toast {
   id: number;
@@ -72,9 +82,48 @@ export default function App() {
     [store, notify, today],
   );
 
-  // localStorage is read in an effect after mount (SSR-safe); show a shell
-  // until the first paint's data is ready. Must come after all hooks so the
-  // hook order stays stable across renders.
+  const handleDelete = useCallback(
+    (id: string) => {
+      const title = store.problems.find((p) => p.id === id)?.title ?? "Problem";
+      store.deleteProblem(id);
+      setDrawerProblem((cur) => (cur?.id === id ? null : cur));
+      notify(`Deleted “${title}”`, "danger");
+    },
+    [store, notify],
+  );
+
+  const handleToggleStatus = useCallback(
+    (id: string) => {
+      const p = store.problems.find((x) => x.id === id);
+      store.toggleStatus(id);
+      if (p) {
+        notify(
+          p.status === "completed"
+            ? `Reopened “${p.title}”`
+            : `“${p.title}” marked complete 🎉`,
+        );
+      }
+    },
+    [store, notify],
+  );
+
+  const openAdd = useCallback(() => {
+    setEditing(null);
+    setModalOpen(true);
+  }, []);
+
+  const openEdit = useCallback((p: Problem) => {
+    setEditing(p);
+    setModalOpen(true);
+  }, []);
+
+  const openDrawer = useCallback((p: Problem) => {
+    setDrawerProblem(p);
+  }, []);
+
+  // Persisted state loads via useSyncExternalStore before first paint on the
+  // client; during prerender/hydration `ready` is false and we show a shell.
+  // Must come after all hooks so the hook order stays stable across renders.
   if (!store.ready) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950">
@@ -85,39 +134,6 @@ export default function App() {
       </div>
     );
   }
-
-  const handleDelete = (id: string) => {
-    const title = store.problems.find((p) => p.id === id)?.title ?? "Problem";
-    store.deleteProblem(id);
-    if (drawerProblem?.id === id) setDrawerProblem(null);
-    notify(`Deleted “${title}”`, "danger");
-  };
-
-  const handleToggleStatus = (id: string) => {
-    const p = store.problems.find((x) => x.id === id);
-    store.toggleStatus(id);
-    if (p) {
-      notify(
-        p.status === "completed"
-          ? `Reopened “${p.title}”`
-          : `“${p.title}” marked complete 🎉`,
-      );
-    }
-  };
-
-  const openAdd = () => {
-    setEditing(null);
-    setModalOpen(true);
-  };
-
-  const openEdit = (p: Problem) => {
-    setEditing(p);
-    setModalOpen(true);
-  };
-
-  const openDrawer = (p: Problem) => {
-    setDrawerProblem(p);
-  };
 
   const showDue = () => {
     setNav("dashboard");
