@@ -8,7 +8,10 @@ A dark-themed, Linear/Vercel-inspired dashboard for tracking DSA practice and sc
 - **Problem bank** — scannable data table with status checkboxes, module pills, spaced-repetition badges (Overdue / Review Today / Safe), confidence signals, relative review dates, and filter tabs (All / Due for Review / module-specific) plus search.
 - **Quick-add & edit modal** — log a problem with name, platform URL, module, difficulty, and confidence rating in seconds.
 - **Revision drawer** — click any row for a slide-out panel with algorithmic pattern tag, tabbed notes (markdown-rendered "My Intuition" + "Complexity" code blocks), a focus timer, and the **"I Re-solved This From Scratch Now"** button that advances the spaced-repetition interval (1 → 3 → 7 → 14 → 30 → 60 → 90 → 180 days).
-- **Persistence** — everything is stored in `localStorage`, with a seeded problem bank on first load so the dashboard is alive immediately.
+- **Analytics** — summary stats, difficulty and confidence distributions, a 14-day review-load forecast, per-module completion, and a 12-week activity heatmap.
+- **Auth & accounts** — login/sign-up gate (seeded with `admin@gmail.com` / `12345678`), a forgot-password reset flow, and per-user data.
+- **Cloud sync (optional)** — with Supabase configured, each user's bank lives in a hosted `problems` table and syncs across devices (offline-first via a per-user `localStorage` cache, last-write-wins, tombstone-safe deletes).
+- **Persistence** — local-first: everything is cached in `localStorage` with a seeded problem bank on first load, so the dashboard is alive immediately and works offline.
 
 ## Getting started
 
@@ -18,6 +21,8 @@ npm run dev      # start the dev server
 npm run build    # typecheck + production build
 npm run lint     # oxlint
 ```
+
+Optional Supabase config lives in `.env.example` — copy it to `.env.local` and fill in your project values to enable real email auth and cloud sync.
 
 ## Stack
 

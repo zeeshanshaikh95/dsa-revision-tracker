@@ -1,3 +1,5 @@
+/* oxlint-disable react/only-export-components — Next.js App Router requires
+ * `metadata`/`viewport` object exports alongside the layout component. */
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";

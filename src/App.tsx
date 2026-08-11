@@ -246,7 +246,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      <Sidebar active={nav} onChange={setNav} onLogout={auth.logout} />
+      <Sidebar
+        active={nav}
+        onChange={setNav}
+        onLogout={auth.logout}
+        user={auth.user}
+      />
       <main className="pl-[68px]">
         <Header
           search={search}
