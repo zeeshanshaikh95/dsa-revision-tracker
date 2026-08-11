@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { BarChart3, CheckCircle2, Settings } from "lucide-react";
+import { BarChart3, CheckCircle2, Settings, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
@@ -27,6 +27,40 @@ interface Toast {
   id: number;
   message: string;
   tone: "success" | "danger";
+}
+
+/** Destructive "Clear all" with a two-step confirm, like the row delete. */
+function ClearAllButton({
+  onClear,
+  disabled,
+}: {
+  onClear: () => void;
+  disabled?: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <button
+      disabled={disabled}
+      onClick={() => {
+        if (confirming) {
+          setConfirming(false);
+          onClear();
+        } else {
+          setConfirming(true);
+        }
+      }}
+      onBlur={() => setConfirming(false)}
+      title="Remove every problem from the bank"
+      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        confirming
+          ? "border-rose-500/40 bg-rose-500/15 text-rose-400"
+          : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-rose-500/40 hover:text-rose-400"
+      }`}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      {confirming ? "Confirm clear?" : "Clear all"}
+    </button>
+  );
 }
 
 export default function App() {
@@ -97,6 +131,12 @@ export default function App() {
     },
     [store, notify, today],
   );
+
+  const handleClearAll = useCallback(() => {
+    store.clearAllProblems();
+    setDrawerProblem(null);
+    notify("All problems cleared — fresh start", "danger");
+  }, [store, notify]);
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -187,9 +227,15 @@ export default function App() {
             Every logged problem across all modules.
           </p>
         </div>
-        <span className="ml-auto rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-sm font-semibold text-zinc-300">
-          {store.problems.length} total
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <ClearAllButton
+            onClear={handleClearAll}
+            disabled={store.problems.length === 0}
+          />
+          <span className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-sm font-semibold text-zinc-300">
+            {store.problems.length} total
+          </span>
+        </div>
       </div>
       <ProblemTable
         problems={store.problems}

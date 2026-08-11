@@ -85,6 +85,7 @@ export interface Store {
   addProblem: (input: NewProblemInput) => Problem;
   updateProblem: (id: string, patch: Partial<Problem>) => void;
   deleteProblem: (id: string) => void;
+  clearAllProblems: () => void;
   toggleStatus: (id: string) => void;
   resetReview: (id: string) => string;
 }
@@ -151,6 +152,11 @@ export function useStore(): Store {
     }));
   }, []);
 
+  /** Wipe the problem bank. Keeps the activity log (streak history). */
+  const clearAllProblems = useCallback((): void => {
+    setState((prev) => recordActivity({ ...prev, problems: [] }));
+  }, []);
+
   const toggleStatus = useCallback((id: string): void => {
     setState((prev) => ({
       ...prev,
@@ -201,6 +207,7 @@ export function useStore(): Store {
       addProblem,
       updateProblem,
       deleteProblem,
+      clearAllProblems,
       toggleStatus,
       resetReview,
     }),
@@ -209,6 +216,7 @@ export function useStore(): Store {
       addProblem,
       updateProblem,
       deleteProblem,
+      clearAllProblems,
       toggleStatus,
       resetReview,
     ],
