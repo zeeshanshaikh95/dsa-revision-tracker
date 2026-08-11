@@ -6,7 +6,7 @@
  * 1. Web Speech API (webkitSpeechRecognition) — cloud transcription via the
  *    browser (Chrome/Edge/Safari). Best quality, but requires the browser's
  *    speech service to be reachable.
- * 2. On-device Whisper (@huggingface/transformers) — lazy-loaded, runs the
+ * 2. On-device Whisper (@xenova/transformers) — lazy-loaded, runs the
  *    whisper-tiny.en model fully in the browser. Used when the speech
  *    service is unreachable (network / service-not-allowed) or unsupported.
  */
@@ -116,6 +116,21 @@ export async function ensureMicPermission(): Promise<string | null> {
 const SILENCE_MS = 2500; // stop recording after this much quiet
 const MAX_RECORD_MS = 12_000; // hard cap so the mic never hangs
 
+/**
+ * Clean a raw transcript before it's sent as a command: strip the model's
+ * non-speech tags ("[MUSIC PLAYING]", "(bell dings)", "[BLANK_AUDIO]") and
+ * any punctuation-only remainder. Returns "" when no meaningful speech
+ * remains — music or noise must never be fired as a command.
+ */
+export function cleanTranscript(raw: string): string {
+  return raw
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-zA-Z0-9'\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Downsample a Float32Array to 16 kHz mono (what Whisper expects). */
 function to16kMono(buffer: Float32Array, fromRate: number): Float32Array {
   if (fromRate === 16000) return buffer;
@@ -177,10 +192,13 @@ export function createOfflineSession(handlers: OfflineSessionHandlers): {
         await ctx.close();
         const transcribe = await getAsr();
         const { text } = await transcribe(mono);
-        if (text.trim()) {
-          handlers.onTranscript(text.trim());
+        const cleaned = cleanTranscript(text);
+        if (cleaned) {
+          handlers.onTranscript(cleaned);
         } else {
-          handlers.onError("I didn't catch that — try speaking a bit closer, or repeat the command.");
+          handlers.onError(
+            "I heard sound but no speech — if music or noise was playing, pause it and say a command like “add Two Sum”.",
+          );
         }
       } catch {
         handlers.onError("Speech recognition failed — check the console and try again.");

@@ -6,6 +6,7 @@ import type { Store } from "../hooks/useStore";
 import { parseChat } from "../lib/assistant";
 import { relativeDay, todayKey } from "../lib/spaced";
 import {
+  cleanTranscript,
   cloudSpeechErrorMessage,
   createOfflineSession,
   ensureMicPermission,
@@ -71,8 +72,21 @@ export function ChatBot({ store }: { store: Store }) {
 
   /** Merge a recognized phrase with anything typed, then fire it. */
   const finishTranscript = (spoken: string) => {
+    const clean = cleanTranscript(spoken);
     const typed = inputRef.current?.value.trim() ?? "";
-    const merged = typed && spoken ? `${typed} ${spoken}` : typed || spoken;
+    if (!clean) {
+      if (typed) {
+        setInput("");
+        send(typed);
+      } else {
+        respond(
+          "I heard sound but no speech — if music or noise was playing, pause it and say a command like “add Two Sum”.",
+        );
+      }
+      setVoiceStatus({ kind: "idle" });
+      return;
+    }
+    const merged = typed && clean ? `${typed} ${clean}` : typed || clean;
     setInput("");
     if (merged) send(merged);
     setVoiceStatus({ kind: "idle" });
