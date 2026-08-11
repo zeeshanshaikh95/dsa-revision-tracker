@@ -1,10 +1,45 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, MessageSquare, Send, X } from "lucide-react";
+import { Bot, MessageSquare, Mic, MicOff, Send, X } from "lucide-react";
 import type { Store } from "../hooks/useStore";
 import { parseChat } from "../lib/assistant";
 import { relativeDay, todayKey } from "../lib/spaced";
+
+/** Minimal typing for the browser Web Speech API (not in TS's DOM lib). */
+interface SpeechRecognitionEventLike {
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      length: number;
+      [index: number]: { transcript: string };
+    };
+  };
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+/** Resolve the browser's speech recognizer constructor, or null if unsupported. */
+function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as Record<string, unknown>;
+  const ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  return typeof ctor === "function"
+    ? (ctor as unknown as new () => SpeechRecognitionLike)
+    : null;
+}
 
 interface Msg {
   id: number;
@@ -26,9 +61,16 @@ export function ChatBot({ store }: { store: Store }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [pendingConfirm, setPendingConfirm] = useState<"clear" | null>(null);
+  const [listening, setListening] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const idRef = useRef(1);
+  const recRef = useRef<SpeechRecognitionLike | null>(null);
+
+  // Abort any in-flight recognition session when the panel unmounts.
+  useEffect(() => {
+    return () => recRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -42,6 +84,65 @@ export function ChatBot({ store }: { store: Store }) {
       ...m,
       { id: idRef.current++, role: "bot", text, chips },
     ]);
+  };
+
+  const startListening = () => {
+    // Toggle: clicking while listening stops the session.
+    if (listening) {
+      recRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const Ctor = getRecognitionCtor();
+    if (!Ctor) {
+      respond(
+        "Voice input isn't supported in this browser yet — try Chrome, Edge, or Safari. You can keep typing commands the usual way!",
+      );
+      return;
+    }
+    const rec = new Ctor();
+    rec.lang = "en-US";
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i]?.[0]?.transcript ?? "";
+      }
+      const last = e.results[e.results.length - 1];
+      const spoken = transcript.trim();
+      if (last?.isFinal) {
+        // Merge with anything already typed, then fire the command.
+        const typed = inputRef.current?.value.trim() ?? "";
+        const merged = typed && spoken ? `${typed} ${spoken}` : typed || spoken;
+        setInput("");
+        if (merged) send(merged);
+      } else if (!inputRef.current?.value) {
+        // Live preview of the transcript while still speaking.
+        setInput(spoken);
+      }
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed") {
+        respond(
+          "Microphone access was blocked — allow it in your browser to use voice commands.",
+        );
+      } else if (e.error === "no-speech") {
+        respond(
+          "I didn't hear anything — click the mic and try again, e.g. \"add Two Sum easy\".",
+        );
+      }
+      setListening(false);
+    };
+    rec.onend = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    try {
+      rec.start();
+    } catch {
+      setListening(false);
+    }
   };
 
   const send = (raw?: string) => {
@@ -145,7 +246,11 @@ export function ChatBot({ store }: { store: Store }) {
               </p>
             </div>
             <button
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                recRef.current?.abort();
+                setListening(false);
+                setOpen(false);
+              }}
               aria-label="Close assistant"
               className="ml-auto rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
             >
@@ -201,9 +306,26 @@ export function ChatBot({ store }: { store: Store }) {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Try “add Two Sum” or “what's due?”"
+              placeholder={
+                listening ? "Listening… speak now" : "Try “add Two Sum” or “what's due?”"
+              }
               className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
+            <button
+              type="button"
+              onClick={startListening}
+              aria-label={listening ? "Stop voice input" : "Voice input"}
+              title={
+                listening ? "Stop listening" : "Speak a command instead of typing"
+              }
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 ${
+                listening
+                  ? "border-rose-500/50 bg-rose-500/15 text-rose-400 animate-pulse"
+                  : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-300"
+              }`}
+            >
+              {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </button>
             <button
               type="submit"
               aria-label="Send message"
