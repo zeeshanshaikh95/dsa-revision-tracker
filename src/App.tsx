@@ -25,6 +25,10 @@ const QuickAddModal = dynamic(
 const Drawer = dynamic(() => import("./components/Drawer").then((m) => m.Drawer), {
   ssr: false,
 }) as typeof import("./components/Drawer").Drawer;
+const ChatBot = dynamic(
+  () => import("./components/ChatBot").then((m) => m.ChatBot),
+  { ssr: false },
+) as typeof import("./components/ChatBot").ChatBot;
 
 interface Toast {
   id: number;
@@ -80,6 +84,7 @@ export default function App() {
     const handle = idle(() => {
       void import("./components/Drawer");
       void import("./components/QuickAddModal");
+      void import("./components/ChatBot");
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -293,6 +298,9 @@ export default function App() {
         onUpdate={store.updateProblem}
         onResetReview={handleResetReview}
       />
+
+      {/* Chat assistant */}
+      <ChatBot store={store} />
 
       {/* Toast */}
       {toast && (
