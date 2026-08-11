@@ -1,6 +1,6 @@
 # DSA Revision Tracker & Spaced Repetition Hub
 
-A dark-themed, Linear/Vercel-inspired dashboard for tracking DSA practice and scheduling spaced-repetition reviews. Built with React 19, TypeScript, Tailwind CSS v4, and Lucide icons.
+A dark-themed, Linear/Vercel-inspired dashboard for tracking DSA practice and scheduling spaced-repetition reviews. Built with Next.js 16, React 19, TypeScript, Tailwind CSS v4, and Lucide icons.
 
 ## Features
 
@@ -21,7 +21,11 @@ npm run lint     # oxlint
 
 ## Stack
 
-- [Vite](https://vite.dev) + [React 19](https://react.dev)
+- [Next.js 16](https://nextjs.org) (App Router, static export) + [React 19](https://react.dev)
 - [TypeScript](https://www.typescriptlang.org)
 - [Tailwind CSS v4](https://tailwindcss.com)
 - [lucide-react](https://lucide.dev) icons
+
+## Deployment
+
+Pushing to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`), which builds the static export (`next build` → `out/`) and deploys it to GitHub Pages at `https://zeeshanshaikh95.github.io/dsa-revision-tracker/`.

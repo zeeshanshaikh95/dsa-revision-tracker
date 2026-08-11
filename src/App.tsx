@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -69,6 +71,20 @@ export default function App() {
     },
     [store, notify, today],
   );
+
+  // localStorage is read in an effect after mount (SSR-safe); show a shell
+  // until the first paint's data is ready. Must come after all hooks so the
+  // hook order stays stable across renders.
+  if (!store.ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+        <div className="flex items-center gap-3 text-sm text-zinc-500">
+          <span className="h-2 w-2 animate-pulse-soft rounded-full bg-emerald-400" />
+          Loading your problem bank…
+        </div>
+      </div>
+    );
+  }
 
   const handleDelete = (id: string) => {
     const title = store.problems.find((p) => p.id === id)?.title ?? "Problem";
