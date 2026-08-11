@@ -103,7 +103,7 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 animate-fade-in bg-zinc-950/60 backdrop-blur-[2px]"
+        className="will-change-overlay absolute inset-0 animate-fade-in bg-zinc-950/60 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
@@ -112,7 +112,7 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
         role="dialog"
         aria-modal="true"
         aria-label={`Revision notes for ${problem.title}`}
-        className="absolute inset-y-0 right-0 flex w-full max-w-[480px] animate-slide-in-right flex-col border-l border-zinc-800 bg-zinc-900/95 shadow-2xl backdrop-blur-xl"
+        className="will-change-overlay absolute inset-y-0 right-0 flex w-full max-w-[480px] animate-slide-in-right flex-col border-l border-zinc-800 bg-zinc-900/95 shadow-2xl backdrop-blur-xl"
       >
         {/* Header */}
         <div className="border-b border-zinc-800/80 p-5">

@@ -358,7 +358,11 @@ export function ProblemTable({
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] border-collapse text-left">
+        <table
+          className={`w-full min-w-[820px] border-collapse text-left ${
+            problems.length > 50 ? "virtualized-rows" : ""
+          }`}
+        >
           <thead>
             <tr className="border-b border-zinc-800/70 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
               <th className="w-12 px-4 py-3">

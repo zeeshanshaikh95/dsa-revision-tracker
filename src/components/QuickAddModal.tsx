@@ -71,14 +71,14 @@ export function QuickAddModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[8vh]">
       <div
-        className="fixed inset-0 animate-fade-in bg-zinc-950/70 backdrop-blur-sm"
+        className="will-change-overlay fixed inset-0 animate-fade-in bg-zinc-950/70 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={editing ? "Edit problem" : "Quick add problem"}
-        className="card relative w-full max-w-lg animate-scale-in p-6 shadow-2xl"
+        className="card will-change-overlay relative w-full max-w-lg animate-scale-in p-6 shadow-2xl"
       >
         <div className="mb-5 flex items-start justify-between">
           <div>

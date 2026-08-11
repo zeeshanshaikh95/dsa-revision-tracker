@@ -130,3 +130,31 @@
 @utility focus-ring {
   @apply outline-none ring-2 ring-emerald-500/60 ring-offset-2 ring-offset-zinc-950;
 }
+
+/*
+ * Scalability: once the problem bank grows past ~50 rows, skip rendering work
+ * for off-screen rows entirely. Progressive enhancement — browsers without
+ * content-visibility support ignore these rules and render everything.
+ */
+.virtualized-rows tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 53px;
+}
+
+/* Promote the animated overlays to their own layer so their compositing
+ * never triggers layout/paint of the table underneath. */
+.will-change-overlay {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* Respect users who prefer less motion — free CPU on low-end machines. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

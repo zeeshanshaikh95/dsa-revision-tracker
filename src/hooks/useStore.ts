@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { Problem } from "../types";
 import { buildSeed } from "../data/seed";
 import { nextReviewAfterSolve, todayKey } from "../lib/spaced";
@@ -113,7 +113,7 @@ export function useStore(): Store {
       : { ...st, activity: [...st.activity, today] };
   };
 
-  const addProblem = (input: NewProblemInput): Problem => {
+  const addProblem = useCallback((input: NewProblemInput): Problem => {
     const today = todayKey();
     const problem: Problem = {
       id: crypto.randomUUID(),
@@ -133,25 +133,25 @@ export function useStore(): Store {
       recordActivity({ ...prev, problems: [problem, ...prev.problems] }),
     );
     return problem;
-  };
+  }, []);
 
-  const updateProblem = (id: string, patch: Partial<Problem>): void => {
+  const updateProblem = useCallback((id: string, patch: Partial<Problem>): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.map((p) =>
         p.id === id ? { ...p, ...patch } : p,
       ),
     }));
-  };
+  }, []);
 
-  const deleteProblem = (id: string): void => {
+  const deleteProblem = useCallback((id: string): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.filter((p) => p.id !== id),
     }));
-  };
+  }, []);
 
-  const toggleStatus = (id: string): void => {
+  const toggleStatus = useCallback((id: string): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.map((p) =>
@@ -163,10 +163,10 @@ export function useStore(): Store {
           : p,
       ),
     }));
-  };
+  }, []);
 
   /** Reset the spaced-repetition countdown after re-solving from scratch. */
-  const resetReview = (id: string): string => {
+  const resetReview = useCallback((id: string): string => {
     const today = todayKey();
     const current = getSnapshot().problems.find((p) => p.id === id);
     const next = nextReviewAfterSolve(current?.reviewCount ?? 0);
@@ -187,16 +187,30 @@ export function useStore(): Store {
       }),
     );
     return next;
-  };
+  }, []);
 
-  return {
-    ready: storeState !== serverSnapshot,
-    problems: storeState.problems,
-    activity: storeState.activity,
-    addProblem,
-    updateProblem,
-    deleteProblem,
-    toggleStatus,
-    resetReview,
-  };
+  // Memoize the store object: its identity must change ONLY when data changes.
+  // If it changed on every App render, every memoized row/child would re-render
+  // on each keystroke or filter click — the callbacks above are stable, and
+  // problems/activity arrays are reference-stable between mutations.
+  return useMemo(
+    () => ({
+      ready: storeState !== serverSnapshot,
+      problems: storeState.problems,
+      activity: storeState.activity,
+      addProblem,
+      updateProblem,
+      deleteProblem,
+      toggleStatus,
+      resetReview,
+    }),
+    [
+      storeState,
+      addProblem,
+      updateProblem,
+      deleteProblem,
+      toggleStatus,
+      resetReview,
+    ],
+  );
 }
