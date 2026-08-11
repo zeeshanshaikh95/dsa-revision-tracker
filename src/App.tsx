@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Dices, Download, PlayCircle } from "lucide-react";
 import type { Problem } from "./types";
-import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
+import {
+  currentStreak,
+  relativeDay,
+  reviewStatus,
+  toDateKey,
+  todayKey,
+} from "./lib/spaced";
 import { pickSurpriseProblem } from "./lib/surprise";
 import { getQuotePool, randomQuoteIndex } from "./lib/quotes";
 import { downloadText, problemsToCsv } from "./lib/export";
@@ -80,11 +86,18 @@ export default function App() {
       ).length,
     [store.problems, today],
   );
-  // Problems solved (or re-solved) today — the daily-goal metric.
-  const solvedToday = useMemo(
-    () => store.problems.filter((p) => p.lastSolved === today).length,
-    [store.problems, today],
-  );
+  // Work completed today — problems solved (or re-solved) plus tasks ticked
+  // off. Both feed the daily-goal ring; tasksToday is kept separate for the
+  // breakdown shown in the ring card and Settings.
+  const { solvedToday, tasksToday } = useMemo(() => {
+    const problemsToday = store.problems.filter(
+      (p) => p.lastSolved === today,
+    ).length;
+    const tasksDone = store.tasks.filter(
+      (t) => t.completedAt && toDateKey(new Date(t.completedAt)) === today,
+    ).length;
+    return { solvedToday: problemsToday + tasksDone, tasksToday: tasksDone };
+  }, [store.problems, store.tasks, today]);
 
   const notify = useCallback((message: string, tone: Toast["tone"] = "success") => {
     setToast({ id: Date.now(), message, tone });
@@ -404,6 +417,7 @@ export default function App() {
         problems={store.problems}
         streak={streak}
         solvedToday={solvedToday}
+        tasksToday={tasksToday}
         goal={settings.dailyGoal}
         onShowDue={showDue}
       />
@@ -529,6 +543,7 @@ export default function App() {
               authMode={auth.mode}
               syncStatus={sync.status}
               solvedToday={solvedToday}
+              tasksToday={tasksToday}
               dailyGoal={settings.dailyGoal}
               onDailyGoalChange={(goal) => setSettings({ dailyGoal: goal })}
               notificationsEnabled={settings.notificationsEnabled}

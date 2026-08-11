@@ -23,8 +23,10 @@ interface SettingsProps {
   user: string | null;
   authMode: "supabase" | "local";
   syncStatus: SyncStatus;
-  /** Problems solved today (feeds the daily goal display). */
+  /** Problems solved plus tasks completed today (daily goal display). */
   solvedToday: number;
+  /** How many of today's completions were to-do tasks. */
+  tasksToday: number;
   /** Target problems per day. */
   dailyGoal: number;
   onDailyGoalChange: (goal: number) => void;
@@ -45,6 +47,7 @@ export const Settings = memo(function Settings({
   authMode,
   syncStatus,
   solvedToday,
+  tasksToday,
   dailyGoal,
   onDailyGoalChange,
   notificationsEnabled,
@@ -152,8 +155,8 @@ export const Settings = memo(function Settings({
           Daily Goal
         </h2>
         <p className="mt-1 text-xs text-zinc-500">
-          How many problems you want to solve each day. The dashboard ring
-          tracks your progress against it.
+          How many problems (and to-do tasks) you want to finish each day. The
+          dashboard ring tracks your progress against it.
         </p>
         <div className="mt-4 flex items-center gap-4">
           <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
@@ -185,7 +188,14 @@ export const Settings = memo(function Settings({
             >
               {solvedToday}
             </span>{" "}
-            solved today
+            completed today
+            {tasksToday > 0 && (
+              <span className="text-zinc-600">
+                {" "}· {solvedToday - tasksToday} problem
+                {solvedToday - tasksToday === 1 ? "" : "s"} + {tasksToday} task
+                {tasksToday === 1 ? "" : "s"}
+              </span>
+            )}
             {solvedToday >= dailyGoal
               ? " — goal complete 🎉"
               : ` · ${dailyGoal - solvedToday} to go`}

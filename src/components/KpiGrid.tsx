@@ -14,8 +14,10 @@ import { ProgressRing } from "./ProgressRing";
 interface KpiGridProps {
   problems: Problem[];
   streak: number;
-  /** Problems solved (or re-solved) today — feeds the daily goal ring. */
+  /** Problems solved plus tasks completed today — feeds the daily goal ring. */
   solvedToday: number;
+  /** How many of today's completions were to-do tasks (for the breakdown). */
+  tasksToday: number;
   /** The user's target number of problems per day. */
   goal: number;
   onShowDue: () => void;
@@ -25,6 +27,7 @@ export const KpiGrid = memo(function KpiGrid({
   problems,
   streak,
   solvedToday,
+  tasksToday,
   goal,
   onShowDue,
 }: KpiGridProps) {
@@ -97,6 +100,11 @@ export const KpiGrid = memo(function KpiGrid({
               : goal - solvedToday === 1
                 ? "1 more to hit your goal"
                 : `${goal - solvedToday} more to hit your goal`}
+            {tasksToday > 0 && (
+              <span className="text-zinc-600">
+                · incl. {tasksToday} task{tasksToday === 1 ? "" : "s"}
+              </span>
+            )}
           </p>
         </div>
       </div>

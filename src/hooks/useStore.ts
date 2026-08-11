@@ -337,14 +337,21 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
 
   const toggleTask = (id: string): void => {
     const now = new Date().toISOString();
-    setState((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((t) =>
-        t.id === id
-          ? { ...t, completedAt: t.completedAt ? null : now }
-          : t,
-      ),
-    }));
+    setState((prev) => {
+      const task = prev.tasks.find((t) => t.id === id);
+      const completing = !task?.completedAt;
+      const next = {
+        ...prev,
+        tasks: prev.tasks.map((t) =>
+          t.id === id
+            ? { ...t, completedAt: t.completedAt ? null : now }
+            : t,
+        ),
+      };
+      // Completing a task counts toward the daily goal and keeps the day
+      // active in the streak (reopening is not an activity).
+      return completing ? recordActivity(next) : next;
+    });
   };
 
   const removeTask = (id: string): void => {
