@@ -1,4 +1,4 @@
-import type { Problem } from "../types";
+import type { Problem, Task } from "../types";
 import { getSupabase } from "./supabase";
 
 /**
@@ -32,6 +32,7 @@ import { getSupabase } from "./supabase";
  *   create table if not exists public.user_profiles (
  *     user_id    uuid primary key references auth.users (id) on delete cascade,
  *     activity   jsonb not null default '[]'::jsonb,
+ *     tasks      jsonb not null default '[]'::jsonb,
  *     updated_at timestamptz not null default now()
  *   );
  *   alter table public.problems enable row level security;
@@ -53,6 +54,7 @@ export const STORAGE_KEY_LEGACY = "dsa-revision-tracker:v1";
 export interface BankRow {
   problems: Problem[];
   activity: string[];
+  tasks: Task[];
   updated_at: string;
 }
 
@@ -80,6 +82,7 @@ interface ProblemRow {
 interface ProfileRow {
   user_id: string;
   activity: string[] | null;
+  tasks: Task[] | null;
   updated_at: string;
 }
 
@@ -153,6 +156,9 @@ export async function fetchBank(userId: string): Promise<BankRow | null> {
 
   const problems = rows.map(rowToProblem);
   const activity = profile?.activity ?? [];
+  const tasks = Array.isArray(profile?.tasks)
+    ? (profile.tasks as Task[])
+    : [];
 
   // Bank-level timestamp = newest of every problem row + the profile row.
   let bestMs = 0;
@@ -168,7 +174,7 @@ export async function fetchBank(userId: string): Promise<BankRow | null> {
   for (const r of rows) consider(r.updated_at);
   consider(profile?.updated_at);
 
-  return { problems, activity, updated_at: bestRaw || new Date().toISOString() };
+  return { problems, activity, tasks, updated_at: bestRaw || new Date().toISOString() };
 }
 
 /**
@@ -181,6 +187,7 @@ export async function upsertBank(
   userId: string,
   problems: Problem[],
   activity: string[],
+  tasks: Task[],
   deletedIds: string[],
   updatedAt: string,
 ): Promise<void> {
@@ -188,18 +195,18 @@ export async function upsertBank(
   if (!sb) return;
   const rows = problems.map((p) => problemToRow(p, userId, updatedAt));
 
-  const tasks: PromiseLike<{ error: unknown }>[] = [];
+  const calls: PromiseLike<{ error: unknown }>[] = [];
   if (rows.length > 0) {
-    tasks.push(sb.from("problems").upsert(rows, { onConflict: "id" }));
+    calls.push(sb.from("problems").upsert(rows, { onConflict: "id" }));
   }
-  tasks.push(
+  calls.push(
     sb.from("user_profiles").upsert(
-      { user_id: userId, activity, updated_at: updatedAt },
+      { user_id: userId, activity, tasks, updated_at: updatedAt },
       { onConflict: "user_id" },
     ),
   );
   if (deletedIds.length > 0) {
-    tasks.push(
+    calls.push(
       sb
         .from("problems")
         .delete()
@@ -207,7 +214,7 @@ export async function upsertBank(
         .in("id", deletedIds),
     );
   }
-  const results = await Promise.all(tasks);
+  const results = await Promise.all(calls);
   const error = results.find((r) => r.error)?.error;
   if (error) throw error;
 }

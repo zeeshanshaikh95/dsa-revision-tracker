@@ -2,25 +2,20 @@
 
 import { useState } from "react";
 import { CheckCircle2, Circle, ListTodo, Plus, Trash2 } from "lucide-react";
-import {
-  addTask,
-  clearCompletedTasks,
-  removeTask,
-  toggleTask,
-  useTasks,
-} from "../hooks/useTasks";
+import type { Store } from "../hooks/useStore";
 
 /**
- * A compact to-do card for the dashboard. Tasks persist in the browser;
- * open tasks are shown on top, completed ones struck through below, with a
+ * A compact to-do card for the dashboard. Tasks live in the store — synced
+ * to the cloud alongside the problem bank — and persist in the browser.
+ * Open tasks are shown on top, completed ones struck through below, with a
  * one-click clear for the finished pile.
  */
-export function TasksPanel() {
-  const tasks = useTasks();
+export function TasksPanel({ store }: { store: Store }) {
+  const tasks = store.tasks;
   const [text, setText] = useState("");
 
   const submit = () => {
-    if (addTask(text)) setText("");
+    if (store.addTask(text)) setText("");
   };
 
   const open = tasks.filter((t) => !t.completedAt);
@@ -75,7 +70,7 @@ export function TasksPanel() {
           {open.map((t) => (
             <li key={t.id} className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-800/40">
               <button
-                onClick={() => toggleTask(t.id)}
+                onClick={() => store.toggleTask(t.id)}
                 aria-label={`Mark “${t.text}” complete`}
                 title="Mark complete"
                 className="shrink-0 text-zinc-600 transition-colors hover:text-emerald-400"
@@ -86,7 +81,7 @@ export function TasksPanel() {
                 {t.text}
               </span>
               <button
-                onClick={() => removeTask(t.id)}
+                onClick={() => store.removeTask(t.id)}
                 aria-label={`Delete task: ${t.text}`}
                 title="Delete task"
                 className="shrink-0 rounded-md p-1 text-zinc-600 opacity-0 transition-all group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-400"
@@ -98,7 +93,7 @@ export function TasksPanel() {
           {done.map((t) => (
             <li key={t.id} className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 opacity-60 transition-colors hover:bg-zinc-800/40">
               <button
-                onClick={() => toggleTask(t.id)}
+                onClick={() => store.toggleTask(t.id)}
                 aria-label={`Reopen “${t.text}”`}
                 title="Reopen"
                 className="shrink-0 text-emerald-400/70 transition-colors hover:text-emerald-300"
@@ -109,7 +104,7 @@ export function TasksPanel() {
                 {t.text}
               </span>
               <button
-                onClick={() => removeTask(t.id)}
+                onClick={() => store.removeTask(t.id)}
                 aria-label={`Delete task: ${t.text}`}
                 title="Delete task"
                 className="shrink-0 rounded-md p-1 text-zinc-600 opacity-0 transition-all group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-400"
@@ -124,7 +119,7 @@ export function TasksPanel() {
       {done.length > 0 && (
         <div className="mt-2.5 flex justify-end">
           <button
-            onClick={clearCompletedTasks}
+            onClick={store.clearCompletedTasks}
             className="text-[11px] font-semibold text-zinc-600 transition-colors hover:text-rose-400"
           >
             Clear {done.length} completed

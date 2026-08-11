@@ -64,7 +64,7 @@ The next push to `main` builds with those values inlined and the app switches to
 
 ### Sync your problem bank across devices
 
-Once Supabase is enabled, the dashboard reads and writes a **`problems` table** (one row per problem) plus a `user_profiles` row for the activity log, synced across devices:
+Once Supabase is enabled, the dashboard reads and writes a **`problems` table** (one row per problem) plus a `user_profiles` row holding the activity log **and your to-do tasks**, synced across devices:
 
 - the browser keeps a per-user `localStorage` cache (instant first paint, works offline);
 - every change is debounce-pushed to the cloud (and flushed when you close the tab); deletes are tracked as tombstones so one device's removal never erases another device's additions;
@@ -97,6 +97,7 @@ create table if not exists public.problems (
 create table if not exists public.user_profiles (
   user_id    uuid primary key references auth.users (id) on delete cascade,
   activity   jsonb not null default '[]'::jsonb,
+  tasks      jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 alter table public.problems enable row level security;

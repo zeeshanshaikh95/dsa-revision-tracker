@@ -1,9 +1,15 @@
 import { useMemo, useSyncExternalStore } from "react";
-import type { Problem } from "../types";
+import type { Problem, Task } from "../types";
 import { buildSeed } from "../data/seed";
 import { nextReviewAfterSolve, todayKey } from "../lib/spaced";
 
 export const STORAGE_KEY_LEGACY = "dsa-revision-tracker:v1";
+
+/** Legacy standalone tasks key, superseded by tasks living in the bank state. */
+const TASKS_KEY_LEGACY = "dsa-revision-tracker:tasks:v1";
+
+const MAX_TASKS = 200;
+const MAX_TASK_TEXT = 200;
 
 export interface NewProblemInput {
   title: string;
@@ -17,6 +23,8 @@ export interface PersistedState {
   problems: Problem[];
   /** Local yyyy-mm-dd keys on which the user solved at least one problem. */
   activity: string[];
+  /** Dashboard to-do items — synced to the cloud with the bank. */
+  tasks: Task[];
   /**
    * Sync bookkeeping. Every local mutation stamps `updatedAt` (client clock);
    * `hydrate()` stamps it with the cloud's timestamp. The sync layer uses it
@@ -31,11 +39,50 @@ const EPOCH = "1970-01-01T00:00:00.000Z";
 const serverSnapshot: PersistedState = {
   problems: [],
   activity: [],
+  tasks: [],
   meta: { updatedAt: EPOCH, deletedIds: [] },
 };
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function sanitizeTasks(tasks: unknown): Task[] {
+  if (!Array.isArray(tasks)) return [];
+  return tasks
+    .filter(
+      (t): t is Task =>
+        !!t &&
+        typeof t.id === "string" &&
+        typeof t.text === "string" &&
+        t.text.trim().length > 0 &&
+        typeof t.createdAt === "string" &&
+        (t.completedAt === null || typeof t.completedAt === "string"),
+    )
+    .map((t) => ({
+      id: t.id,
+      text: t.text.trim().slice(0, MAX_TASK_TEXT),
+      createdAt: t.createdAt,
+      completedAt: t.completedAt,
+    }))
+    .slice(0, MAX_TASKS);
+}
+
+/** One-time adoption of tasks saved under the old standalone key. */
+function migrateLegacyTasks(): Task[] {
+  try {
+    const raw = localStorage.getItem(TASKS_KEY_LEGACY);
+    if (raw) {
+      const migrated = sanitizeTasks(JSON.parse(raw));
+      if (migrated.length > 0) {
+        localStorage.removeItem(TASKS_KEY_LEGACY);
+        return migrated;
+      }
+    }
+  } catch {
+    // Corrupt or unreadable — nothing to migrate.
+  }
+  return [];
 }
 
 function loadState(storageKey: string, seed: boolean): PersistedState {
@@ -53,7 +100,11 @@ function loadState(storageKey: string, seed: boolean): PersistedState {
                   : [],
               }
             : { updatedAt: EPOCH, deletedIds: [] };
-        return { problems: parsed.problems, activity: parsed.activity, meta };
+        const tasks =
+          Array.isArray(parsed.tasks) && parsed.tasks.length > 0
+            ? sanitizeTasks(parsed.tasks)
+            : migrateLegacyTasks();
+        return { problems: parsed.problems, activity: parsed.activity, tasks, meta };
       }
     }
   } catch {
@@ -62,6 +113,7 @@ function loadState(storageKey: string, seed: boolean): PersistedState {
   return {
     problems: seed ? buildSeed() : [],
     activity: seed ? [todayKey()] : [],
+    tasks: migrateLegacyTasks(),
     meta: { updatedAt: EPOCH, deletedIds: [] },
   };
 }
@@ -71,7 +123,12 @@ interface StoreInstance {
   getSnapshot: () => PersistedState;
   getServerSnapshot: () => PersistedState;
   /** Replace the bank with cloud data (marks it as synced state). */
-  hydrate: (problems: Problem[], activity: string[], updatedAt: string) => void;
+  hydrate: (
+    problems: Problem[],
+    activity: string[],
+    updatedAt: string,
+    tasks?: Task[],
+  ) => void;
   /** Drop synced tombstones without stamping a new updatedAt. */
   ackTombstones: () => void;
   addProblem: (input: NewProblemInput) => Problem;
@@ -80,6 +137,10 @@ interface StoreInstance {
   clearAllProblems: () => void;
   toggleStatus: (id: string) => void;
   resetReview: (id: string) => string;
+  addTask: (text: string) => Task | null;
+  toggleTask: (id: string) => void;
+  removeTask: (id: string) => void;
+  clearCompletedTasks: () => void;
 }
 
 /**
@@ -136,10 +197,11 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     problems: Problem[],
     activity: string[],
     updatedAt: string,
+    tasks: Task[] = [],
   ): void => {
     // Cloud data replaces the bank; tombstones are cleared (they were either
     // pushed or the cloud is newer, so the cloud's rows are authoritative).
-    commit({ problems, activity, meta: { updatedAt, deletedIds: [] } });
+    commit({ problems, activity, tasks, meta: { updatedAt, deletedIds: [] } });
   };
 
   /** Called by the sync layer after a successful push clears the tombstones. */
@@ -259,6 +321,46 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     return next;
   };
 
+  const addTask = (text: string): Task | null => {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.length > MAX_TASK_TEXT) return null;
+    if (getSnapshot().tasks.length >= MAX_TASKS) return null;
+    const task: Task = {
+      id: crypto.randomUUID(),
+      text: trimmed,
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+    };
+    setState((prev) => ({ ...prev, tasks: [task, ...prev.tasks] }));
+    return task;
+  };
+
+  const toggleTask = (id: string): void => {
+    const now = new Date().toISOString();
+    setState((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((t) =>
+        t.id === id
+          ? { ...t, completedAt: t.completedAt ? null : now }
+          : t,
+      ),
+    }));
+  };
+
+  const removeTask = (id: string): void => {
+    setState((prev) => ({
+      ...prev,
+      tasks: prev.tasks.filter((t) => t.id !== id),
+    }));
+  };
+
+  const clearCompletedTasks = (): void => {
+    setState((prev) => ({
+      ...prev,
+      tasks: prev.tasks.filter((t) => !t.completedAt),
+    }));
+  };
+
   return {
     subscribe,
     getSnapshot,
@@ -271,6 +373,10 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
     clearAllProblems,
     toggleStatus,
     resetReview,
+    addTask,
+    toggleTask,
+    removeTask,
+    clearCompletedTasks,
   };
 }
 
@@ -279,6 +385,7 @@ export interface Store extends StoreInstance {
   ready: boolean;
   problems: Problem[];
   activity: string[];
+  tasks: Task[];
 }
 
 export function useStore(storageKey: string, seed: boolean): Store {
@@ -299,6 +406,7 @@ export function useStore(storageKey: string, seed: boolean): Store {
       ready: storeState !== serverSnapshot,
       problems: storeState.problems,
       activity: storeState.activity,
+      tasks: storeState.tasks,
       subscribe: instance.subscribe,
       getSnapshot: instance.getSnapshot,
       getServerSnapshot: instance.getServerSnapshot,
@@ -310,6 +418,10 @@ export function useStore(storageKey: string, seed: boolean): Store {
       clearAllProblems: instance.clearAllProblems,
       toggleStatus: instance.toggleStatus,
       resetReview: instance.resetReview,
+      addTask: instance.addTask,
+      toggleTask: instance.toggleTask,
+      removeTask: instance.removeTask,
+      clearCompletedTasks: instance.clearCompletedTasks,
     }),
     [storeState, instance],
   );

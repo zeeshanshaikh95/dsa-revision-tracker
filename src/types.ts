@@ -31,6 +31,16 @@ export interface Problem {
   createdAt: string;
 }
 
+/** A dashboard to-do item; synced to the cloud alongside the bank. */
+export interface Task {
+  id: string;
+  text: string;
+  /** ISO timestamp of creation. */
+  createdAt: string;
+  /** ISO timestamp of completion, or null while open. */
+  completedAt: string | null;
+}
+
 export const MODULES = [
   "Introduction",
   "Warm Up",

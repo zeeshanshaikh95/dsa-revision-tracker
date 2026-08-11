@@ -46,6 +46,7 @@ export function useDataSync(store: Store): DataSync {
         uid,
         snap.problems,
         snap.activity,
+        snap.tasks,
         snap.meta.deletedIds,
         updatedAt,
       );
@@ -95,7 +96,7 @@ export function useDataSync(store: Store): DataSync {
         if (dbTs > localTs) {
           // Cloud is newer (or the local cache predates sync) — hydrate.
           lastHandledTs.current = row.updated_at;
-          store.hydrate(row.problems, row.activity, row.updated_at);
+          store.hydrate(row.problems, row.activity, row.updated_at, row.tasks);
           setStatusSafe("synced");
         } else {
           // Local is newer — push it up.

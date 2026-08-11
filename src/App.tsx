@@ -440,7 +440,7 @@ export default function App() {
       </div>
 
       {/* To-do list */}
-      <TasksPanel />
+      <TasksPanel store={store} />
 
       <ProblemTable
         problems={store.problems}
