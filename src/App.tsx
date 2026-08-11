@@ -172,7 +172,15 @@ export default function App() {
 
   // Signed out — show the login / sign-up gate.
   if (!auth.user) {
-    return <Login onLogin={auth.login} onSignup={auth.signup} />;
+    return (
+      <Login
+        onLogin={auth.login}
+        onSignup={auth.signup}
+        onRequestReset={auth.requestResetCode}
+        onVerifyResetCode={auth.verifyResetCode}
+        onResetPassword={auth.resetPassword}
+      />
+    );
   }
 
   const dashboard = (
