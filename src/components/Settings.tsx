@@ -1,11 +1,17 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
+  Bell,
+  BellOff,
+  BellRing,
   Cloud,
   CloudOff,
   ExternalLink,
   Loader2,
+  Minus,
+  Plus,
+  Target,
   User,
 } from "lucide-react";
 import type { SyncStatus } from "../hooks/useDataSync";
@@ -14,6 +20,15 @@ interface SettingsProps {
   user: string | null;
   authMode: "supabase" | "local";
   syncStatus: SyncStatus;
+  /** Problems solved today (feeds the daily goal display). */
+  solvedToday: number;
+  /** Target problems per day. */
+  dailyGoal: number;
+  onDailyGoalChange: (goal: number) => void;
+  notificationsEnabled: boolean;
+  /** Turn notifications on/off; resolves to whether they're actually on. */
+  onNotificationsChange: (enabled: boolean) => Promise<boolean>;
+  onTestNotification: () => void;
 }
 
 const SETUP_URL =
@@ -23,13 +38,48 @@ export const Settings = memo(function Settings({
   user,
   authMode,
   syncStatus,
+  solvedToday,
+  dailyGoal,
+  onDailyGoalChange,
+  notificationsEnabled,
+  onNotificationsChange,
+  onTestNotification,
 }: SettingsProps) {
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyNote, setNotifyNote] = useState<string | null>(null);
+
+  const toggleNotifications = async () => {
+    if (notificationsEnabled) {
+      setNotifyNote(null);
+      await onNotificationsChange(false);
+      return;
+    }
+    setNotifyBusy(true);
+    setNotifyNote(null);
+    try {
+      const granted = await onNotificationsChange(true);
+      setNotifyNote(
+        granted
+          ? "You'll get one browser notification per day when problems are due."
+          : "Permission was blocked — allow notifications in your browser settings to enable due alerts.",
+      );
+    } finally {
+      setNotifyBusy(false);
+    }
+  };
+
+  const stepGoal = (delta: number) => {
+    onDailyGoalChange(Math.min(50, Math.max(1, dailyGoal + delta)));
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2.5">
         <div>
           <h1 className="text-lg font-bold text-zinc-100">Settings</h1>
-          <p className="text-sm text-zinc-500">Account, auth, and cloud sync.</p>
+          <p className="text-sm text-zinc-500">
+            Account, cloud sync, daily goal, and notifications.
+          </p>
         </div>
       </div>
 
@@ -55,6 +105,108 @@ export const Settings = memo(function Settings({
             </span>
           </div>
         </div>
+      </section>
+
+      {/* Daily goal */}
+      <section className="card p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <Target className="h-4 w-4 text-emerald-400" />
+          Daily Goal
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          How many problems you want to solve each day. The dashboard ring
+          tracks your progress against it.
+        </p>
+        <div className="mt-4 flex items-center gap-4">
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
+            <button
+              onClick={() => stepGoal(-1)}
+              aria-label="Decrease daily goal"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+              disabled={dailyGoal <= 1}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="w-10 text-center font-mono text-lg font-bold text-zinc-100">
+              {dailyGoal}
+            </span>
+            <button
+              onClick={() => stepGoal(1)}
+              aria-label="Increase daily goal"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+              disabled={dailyGoal >= 50}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="text-sm text-zinc-400">
+            <span
+              className={`font-bold ${
+                solvedToday >= dailyGoal ? "text-emerald-400" : "text-zinc-100"
+              }`}
+            >
+              {solvedToday}
+            </span>{" "}
+            solved today
+            {solvedToday >= dailyGoal
+              ? " — goal complete 🎉"
+              : ` · ${dailyGoal - solvedToday} to go`}
+          </div>
+        </div>
+      </section>
+
+      {/* Notifications */}
+      <section className="card p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
+          <Bell className="h-4 w-4 text-amber-400" />
+          Due Notifications
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Get a browser notification once per day when reviews are due — even
+          when the tab is in the background.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={toggleNotifications}
+            disabled={notifyBusy}
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-bold transition-all active:scale-95 disabled:opacity-50 ${
+              notificationsEnabled
+                ? "bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+                : "border border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-emerald-500/40 hover:text-emerald-300"
+            }`}
+          >
+            {notifyBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : notificationsEnabled ? (
+              <BellRing className="h-4 w-4" />
+            ) : (
+              <BellOff className="h-4 w-4" />
+            )}
+            {notifyBusy
+              ? "Requesting…"
+              : notificationsEnabled
+                ? "Notifications on"
+                : "Enable notifications"}
+          </button>
+          {notificationsEnabled && (
+            <button
+              onClick={onTestNotification}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 text-sm font-semibold text-zinc-400 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
+            >
+              <BellRing className="h-3.5 w-3.5" />
+              Send test
+            </button>
+          )}
+        </div>
+        {notifyNote && (
+          <p className="mt-3 text-xs leading-relaxed text-zinc-400">{notifyNote}</p>
+        )}
+        {notificationsEnabled && typeof window !== "undefined" && (
+          <p className="mt-3 text-[11px] text-zinc-600">
+            Status: {window.Notification?.permission ?? "unsupported"}. To
+            change it, use your browser's site permissions.
+          </p>
+        )}
       </section>
 
       {/* Cloud sync */}

@@ -8,6 +8,7 @@ import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced
 import { pickSurpriseProblem } from "./lib/surprise";
 import { downloadText, problemsToCsv } from "./lib/export";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
+import { setSettings, useSettings } from "./hooks/useSettings";
 import { useAuth } from "./hooks/useAuth";
 import { useDataSync } from "./hooks/useDataSync";
 import { Sidebar, type NavKey } from "./components/Sidebar";
@@ -54,6 +55,7 @@ export default function App() {
       : STORAGE_KEY_LEGACY;
   const store = useStore(storageKey, auth.mode !== "supabase");
   const sync = useDataSync(store);
+  const settings = useSettings();
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [search, setSearch] = useState("");
   const [tableFilter, setTableFilter] = useState<FilterKey>("all");
@@ -71,6 +73,11 @@ export default function App() {
       store.problems.filter(
         (p) => p.status === "active" && reviewStatus(p, today) !== "safe",
       ).length,
+    [store.problems, today],
+  );
+  // Problems solved (or re-solved) today — the daily-goal metric.
+  const solvedToday = useMemo(
+    () => store.problems.filter((p) => p.lastSolved === today).length,
     [store.problems, today],
   );
 
@@ -205,6 +212,102 @@ export default function App() {
     );
   }, [store.problems, today, notify]);
 
+  // Due notifications: once per day, and only while the tab is in the
+  // background — never ping someone who is actively looking at the dashboard.
+  // The per-date flag means it can fire again tomorrow; clearing it when the
+  // queue empties lets a fresh due problem re-trigger the same day.
+  useEffect(() => {
+    if (!settings.notificationsEnabled) return;
+    if (
+      typeof window === "undefined" ||
+      !("Notification" in window) ||
+      window.Notification.permission !== "granted"
+    ) {
+      return;
+    }
+    const flagKey = (day: string) =>
+      `dsa-revision-tracker:notified:${day}`;
+    const check = () => {
+      const day = todayKey();
+      const due = store.problems.filter(
+        (p) => p.status === "active" && reviewStatus(p, day) !== "safe",
+      );
+      if (due.length === 0) {
+        try {
+          localStorage.removeItem(flagKey(day));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      if (document.hidden) {
+        try {
+          if (localStorage.getItem(flagKey(day))) return;
+          const titles = due
+            .slice(0, 3)
+            .map((p) => p.title)
+            .join(", ");
+          const n = new window.Notification(
+            due.length === 1
+              ? "1 problem due for review"
+              : `${due.length} problems due for review`,
+            { body: titles, tag: "dsa-due-reviews" },
+          );
+          n.onclick = () => {
+            window.focus();
+            n.close();
+          };
+          localStorage.setItem(flagKey(day), "1");
+        } catch {
+          /* notification API failed — never crash the app over it */
+        }
+      }
+    };
+    check();
+    const timer = window.setInterval(check, 10 * 60 * 1000);
+    const onVisibility = () => {
+      if (document.hidden) check();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [settings.notificationsEnabled, store.problems]);
+
+  const handleNotificationsChange = useCallback(
+    async (enabled: boolean): Promise<boolean> => {
+      if (!enabled) {
+        setSettings({ notificationsEnabled: false });
+        return false;
+      }
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        return false;
+      }
+      const permission = await window.Notification.requestPermission();
+      const granted = permission === "granted";
+      setSettings({ notificationsEnabled: granted });
+      return granted;
+    },
+    [],
+  );
+
+  const handleTestNotification = useCallback(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    try {
+      const n = new window.Notification("Due notifications are working", {
+        body: "This is a test — you'll get a daily alert when reviews come due.",
+        tag: "dsa-test-notification",
+      });
+      n.onclick = () => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Global keyboard shortcuts: n = new problem, / = focus search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -265,7 +368,13 @@ export default function App() {
 
   const dashboard = (
     <div className="space-y-5">
-      <KpiGrid problems={store.problems} streak={streak} onShowDue={showDue} />
+      <KpiGrid
+        problems={store.problems}
+        streak={streak}
+        solvedToday={solvedToday}
+        goal={settings.dailyGoal}
+        onShowDue={showDue}
+      />
       <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -383,6 +492,12 @@ export default function App() {
               user={auth.user}
               authMode={auth.mode}
               syncStatus={sync.status}
+              solvedToday={solvedToday}
+              dailyGoal={settings.dailyGoal}
+              onDailyGoalChange={(goal) => setSettings({ dailyGoal: goal })}
+              notificationsEnabled={settings.notificationsEnabled}
+              onNotificationsChange={handleNotificationsChange}
+              onTestNotification={handleTestNotification}
             />
           )}
         </div>

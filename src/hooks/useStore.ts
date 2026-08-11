@@ -213,17 +213,26 @@ function createStore(storageKey: string, seed: boolean): StoreInstance {
   };
 
   const toggleStatus = (id: string): void => {
-    setState((prev) => ({
-      ...prev,
-      problems: prev.problems.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              status: p.status === "completed" ? "active" : "completed",
-            }
-          : p,
-      ),
-    }));
+    const today = todayKey();
+    setState((prev) => {
+      const problem = prev.problems.find((p) => p.id === id);
+      const completing = problem?.status === "active";
+      const next = {
+        ...prev,
+        problems: prev.problems.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                status: (p.status === "completed" ? "active" : "completed") as Problem["status"],
+                // Marking complete counts as solving it today (feeds the
+                // daily-goal ring and the streak).
+                lastSolved: completing ? today : p.lastSolved,
+              }
+            : p,
+        ),
+      };
+      return completing ? recordActivity(next) : next;
+    });
   };
 
   /** Reset the spaced-repetition countdown after re-solving from scratch. */

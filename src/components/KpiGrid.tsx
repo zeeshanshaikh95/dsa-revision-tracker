@@ -1,5 +1,12 @@
 import { memo } from "react";
-import { CheckCircle2, Flame, Layers, ListChecks, Zap } from "lucide-react";
+import {
+  CheckCircle2,
+  Flame,
+  Layers,
+  ListChecks,
+  Target,
+  Zap,
+} from "lucide-react";
 import type { Problem } from "../types";
 import { moduleProgress, reviewStatus, todayKey } from "../lib/spaced";
 import { ProgressRing } from "./ProgressRing";
@@ -7,18 +14,27 @@ import { ProgressRing } from "./ProgressRing";
 interface KpiGridProps {
   problems: Problem[];
   streak: number;
+  /** Problems solved (or re-solved) today — feeds the daily goal ring. */
+  solvedToday: number;
+  /** The user's target number of problems per day. */
+  goal: number;
   onShowDue: () => void;
 }
 
 export const KpiGrid = memo(function KpiGrid({
   problems,
   streak,
+  solvedToday,
+  goal,
   onShowDue,
 }: KpiGridProps) {
   const total = problems.length;
   const solved = problems.filter((p) => p.status === "completed").length;
   const pct = total === 0 ? 0 : Math.round((solved / total) * 100);
   const today = todayKey();
+
+  const goalPct = goal <= 0 ? 0 : Math.min(100, Math.round((solvedToday / goal) * 100));
+  const goalHit = solvedToday >= goal;
 
   const due = problems.filter(
     (p) => p.status === "active" && reviewStatus(p, today) !== "safe",
@@ -32,7 +48,7 @@ export const KpiGrid = memo(function KpiGrid({
   const modules = moduleProgress(problems).slice(0, 3);
 
   return (
-    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {/* 1 — Total solved */}
       <div className="card flex items-center gap-4 p-5">
         <ProgressRing pct={pct} size={72} stroke={7}>
@@ -52,7 +68,40 @@ export const KpiGrid = memo(function KpiGrid({
         </div>
       </div>
 
-      {/* 2 — Due today */}
+      {/* 2 — Daily goal */}
+      <div
+        className={`card flex items-center gap-4 p-5 ${
+          goalHit ? "ring-1 ring-inset ring-emerald-500/30" : ""
+        }`}
+      >
+        <ProgressRing
+          pct={goalPct}
+          size={72}
+          stroke={7}
+          color={goalHit ? "stroke-emerald-400" : "stroke-amber-400"}
+        >
+          <span className="text-sm font-bold text-zinc-100">{goalPct}%</span>
+        </ProgressRing>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Daily Goal
+          </p>
+          <p className="mt-1 text-xl font-bold text-zinc-100">
+            {solvedToday}{" "}
+            <span className="text-sm font-medium text-zinc-500">/ {goal}</span>
+          </p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
+            <Target className="h-3 w-3" />
+            {goalHit
+              ? "Goal hit — nice! 🎉"
+              : goal - solvedToday === 1
+                ? "1 more to hit your goal"
+                : `${goal - solvedToday} more to hit your goal`}
+          </p>
+        </div>
+      </div>
+
+      {/* 3 — Due today */}
       <button
         onClick={onShowDue}
         className={`card group relative overflow-hidden p-5 text-left transition-colors hover:border-zinc-700 ${
@@ -95,7 +144,7 @@ export const KpiGrid = memo(function KpiGrid({
         <span className="absolute inset-x-0 bottom-0 h-0.5 origin-left scale-x-0 bg-amber-400 transition-transform duration-300 group-hover:scale-x-100" />
       </button>
 
-      {/* 3 — Mastery streak */}
+      {/* 4 — Mastery streak */}
       <div className="card p-5">
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -128,7 +177,7 @@ export const KpiGrid = memo(function KpiGrid({
         </p>
       </div>
 
-      {/* 4 — Module completion */}
+      {/* 5 — Module completion */}
       <div className="card p-5">
         <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
