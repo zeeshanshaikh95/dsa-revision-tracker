@@ -19,6 +19,7 @@ import {
   ModuleTag,
   ReviewStatusBadge,
 } from "./badges";
+import { ConfettiBurst } from "./ConfettiBurst";
 
 interface ReviewSessionProps {
   open: boolean;
@@ -56,6 +57,8 @@ export function ReviewSession({
   const [index, setIndex] = useState(0);
   // Stable celebratory quote for the completion screen.
   const [doneQuote] = useState(() => randomQuoteIndex(null, donePool.length));
+  // Incremented each time a problem is solved, re-mounting a mini burst.
+  const [burstKey, setBurstKey] = useState(0);
 
   // Reset progress whenever a new session starts.
   useEffect(() => {
@@ -90,6 +93,8 @@ export function ReviewSession({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Mini confetti when a problem is solved */}
+      {burstKey > 0 && <ConfettiBurst key={burstKey} pieces={26} />}
       {/* Backdrop */}
       <div
         className="absolute inset-0 animate-fade-in bg-zinc-950/70 backdrop-blur-[2px]"
@@ -212,6 +217,7 @@ export function ReviewSession({
               <button
                 onClick={() => {
                   onResetReview(current.id);
+                  setBurstKey((k) => k + 1);
                   advance();
                 }}
                 className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 text-sm font-bold text-zinc-950 shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.99]"

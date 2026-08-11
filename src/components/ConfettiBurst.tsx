@@ -46,10 +46,17 @@ function makePiece(id: number): Piece {
  * A brief, dependency-free confetti burst. Rendered above everything when
  * the daily goal is reached; pieces fall for a couple of seconds and the
  * overlay removes itself. Respects prefers-reduced-motion via the global
- * media query.
+ * media query. `pieces` lets callers render a smaller, quicker burst (e.g.
+ * per-solve celebrations).
  */
-export function ConfettiBurst() {
-  const pieces = useMemo(() => Array.from({ length: PIECE_COUNT }, (_, i) => makePiece(i)), []);
+export function ConfettiBurst({ pieces = PIECE_COUNT }: { pieces?: number }) {
+  const pieceList = useMemo(
+    () =>
+      Array.from({ length: Math.max(1, Math.min(pieces, 200)) }, (_, i) =>
+        makePiece(i),
+      ),
+    [pieces],
+  );
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -64,7 +71,7 @@ export function ConfettiBurst() {
       aria-hidden
       className="confetti-overlay pointer-events-none fixed inset-0 z-[70] overflow-hidden"
     >
-      {pieces.map((p) => (
+      {pieceList.map((p) => (
         <span
           key={p.id}
           className="confetti-piece"
