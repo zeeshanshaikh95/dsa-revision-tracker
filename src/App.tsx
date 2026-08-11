@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Dices } from "lucide-react";
+import { Dices, Download, PlayCircle } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
 import { pickSurpriseProblem } from "./lib/surprise";
+import { downloadText, problemsToCsv } from "./lib/export";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
 import { useAuth } from "./hooks/useAuth";
 import { useDataSync } from "./hooks/useDataSync";
@@ -31,6 +32,10 @@ const ChatBot = dynamic(
   () => import("./components/ChatBot").then((m) => m.ChatBot),
   { ssr: false },
 ) as typeof import("./components/ChatBot").ChatBot;
+const ReviewSession = dynamic(
+  () => import("./components/ReviewSession").then((m) => m.ReviewSession),
+  { ssr: false },
+) as typeof import("./components/ReviewSession").ReviewSession;
 
 interface Toast {
   id: number;
@@ -55,7 +60,9 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Problem | null>(null);
   const [drawerProblem, setDrawerProblem] = useState<Problem | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const streak = useMemo(() => currentStreak(store.activity), [store.activity]);
   const today = todayKey();
@@ -180,6 +187,50 @@ export default function App() {
     setDrawerProblem(p);
   }, [store.problems, today, notify]);
 
+  const startReview = useCallback(() => {
+    if (dueCount === 0) {
+      notify("Nothing due right now — you're all caught up! 🎉");
+      return;
+    }
+    setReviewOpen(true);
+  }, [dueCount, notify]);
+
+  const handleExportCsv = useCallback(() => {
+    downloadText(
+      `dsa-bank-${today}.csv`,
+      problemsToCsv(store.problems),
+    );
+    notify(
+      `Exported ${store.problems.length} problem${store.problems.length === 1 ? "" : "s"} as CSV`,
+    );
+  }, [store.problems, today, notify]);
+
+  // Global keyboard shortcuts: n = new problem, / = focus search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        openAdd();
+      } else if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openAdd]);
+
   // Persisted state loads via useSyncExternalStore before first paint on the
   // client; during prerender/hydration `ready` is false and we show a shell.
   // Must come after all hooks so the hook order stays stable across renders.
@@ -215,22 +266,36 @@ export default function App() {
   const dashboard = (
     <div className="space-y-5">
       <KpiGrid problems={store.problems} streak={streak} onShowDue={showDue} />
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={startReview}
+            aria-label="Start a review session"
+            title={
+              dueCount > 0
+                ? `Review ${dueCount} problem${dueCount === 1 ? "" : "s"} due now`
+                : "Nothing due right now"
+            }
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-all hover:bg-emerald-400 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <PlayCircle className="h-4 w-4" />
+            Start Review{dueCount > 0 ? ` (${dueCount})` : ""}
+          </button>
           <button
             onClick={handleSurprise}
             aria-label="Surprise me with a random problem"
             title="Pick a random problem — overdue and due-today ones are more likely"
-            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-all hover:bg-emerald-400 active:scale-95"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 text-sm font-semibold text-zinc-300 transition-colors hover:border-emerald-500/50 hover:text-emerald-300"
           >
             <Dices className="h-4 w-4" />
             Surprise me
           </button>
-          <p className="truncate text-xs text-zinc-500">
-            Random problem — overdue and due-today ones are more likely to show
-            up.
-          </p>
         </div>
+        <p className="truncate text-xs text-zinc-500">
+          {dueCount > 0
+            ? `Start Review walks your ${dueCount} due problems one at a time.`
+            : "All caught up — nothing due for review right now."}
+        </p>
       </div>
       <ProblemTable
         problems={store.problems}
@@ -257,8 +322,20 @@ export default function App() {
             Every logged problem across all modules.
           </p>
         </div>
-        <span className="ml-auto rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-sm font-semibold text-zinc-300">
-          {store.problems.length} total
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            aria-label="Export problems as CSV"
+            title="Download the whole bank as a CSV file"
+            disabled={store.problems.length === 0}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 text-sm font-semibold text-zinc-400 transition-colors hover:border-emerald-500/40 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </button>
+          <span className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-sm font-semibold text-zinc-300">
+            {store.problems.length} total
+          </span>
         </span>
       </div>
       <ProblemTable
@@ -289,6 +366,7 @@ export default function App() {
         <Header
           search={search}
           onSearch={setSearch}
+          searchRef={searchInputRef}
           streak={streak}
           dueCount={dueCount}
           syncStatus={sync.status}
@@ -324,6 +402,14 @@ export default function App() {
         problem={drawerProblem}
         onClose={() => setDrawerProblem(null)}
         onUpdate={store.updateProblem}
+        onResetReview={handleResetReview}
+      />
+
+      {/* Review session */}
+      <ReviewSession
+        open={reviewOpen}
+        problems={store.problems}
+        onClose={() => setReviewOpen(false)}
         onResetReview={handleResetReview}
       />
 

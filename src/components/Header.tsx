@@ -1,10 +1,12 @@
-import { memo } from "react";
+import { memo, type Ref } from "react";
 import { Cloud, CloudOff, Flame, Loader2, Plus, Search, X } from "lucide-react";
 import type { SyncStatus } from "../hooks/useDataSync";
 
 interface HeaderProps {
   search: string;
   onSearch: (value: string) => void;
+  /** Lets the global `/` shortcut focus the search box. */
+  searchRef?: Ref<HTMLInputElement>;
   streak: number;
   dueCount: number;
   syncStatus: SyncStatus;
@@ -14,6 +16,7 @@ interface HeaderProps {
 export const Header = memo(function Header({
   search,
   onSearch,
+  searchRef,
   streak,
   dueCount,
   syncStatus,
@@ -26,6 +29,7 @@ export const Header = memo(function Header({
         <div className="relative min-w-0 flex-1 md:max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <input
+            ref={searchRef}
             type="search"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
