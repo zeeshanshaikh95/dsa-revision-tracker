@@ -9,6 +9,7 @@ import {
   totalFocusedTime,
 } from "./analytics";
 import { pickSurpriseProblem } from "./surprise";
+import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "./quotes";
 
 /**
  * Deterministic assistant for managing the problem bank. Everything runs
@@ -37,7 +38,7 @@ const CONFIDENCES: Confidence[] = ["struggled", "hints", "mastered"];
 
 const KV_RE = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))/gi;
 
-const helpChips = ["What's due today?", "List all problems", "Stats"];
+const helpChips = ["What's due today?", "List all problems", "Stats", "Motivate me"];
 const fallbackChips = ["Help", "What's due today?"];
 
 function norm(s: string): string {
@@ -110,7 +111,17 @@ function helpAction(): ChatAction {
       "• update \"Two Sum\" difficulty=hard confidence=mastered\n" +
       "• reset \"Two Sum\"   (restart its review cycle)\n" +
       "• what's due? · stats · list · search \"two\"\n" +
-      "• clear all   (wipes the bank — asks for confirmation)",
+      "• clear all   (wipes the bank — asks for confirmation)\n" +
+      "• motivate me  (a quote to keep the grind going)",
+  };
+}
+
+function motivateAction(): ChatAction {
+  const quote = MOTIVATIONAL_QUOTES[randomQuoteIndex(null)];
+  return {
+    kind: "reply",
+    text: `💪 “${quote.text}” — ${quote.author}\n\nYou've got this. One problem at a time.`,
+    chips: ["Surprise me", "What's due today?"],
   };
 }
 
@@ -321,6 +332,8 @@ export function parseChat(raw: string, problems: Problem[]): ChatAction {
   if (/^(help|\?|commands|what can you do)$/.test(low)) return helpAction();
   if (/^(stats|summary|overview|progress|how am i doing)$/.test(low))
     return statsAction(problems);
+  if (/^(motivate me|motivate|quote|inspire me|inspire|encourage me|i need motivation|give me a quote)$/.test(low))
+    return motivateAction();
   if (/^(surprise me|surprise|random|pick one for me|what should i do|give me something)$/.test(low)) {
     const p = pickSurpriseProblem(problems, todayKey());
     if (!p)
