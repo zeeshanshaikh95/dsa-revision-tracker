@@ -3,6 +3,7 @@ import {
   Binary,
   Database,
   LayoutDashboard,
+  LogOut,
   Settings,
 } from "lucide-react";
 
@@ -19,9 +20,10 @@ const NAV_ITEMS: { key: NavKey; label: string; icon: typeof LayoutDashboard }[] 
 interface SidebarProps {
   active: NavKey;
   onChange: (key: NavKey) => void;
+  onLogout: () => void;
 }
 
-export function Sidebar({ active, onChange }: SidebarProps) {
+export function Sidebar({ active, onChange, onLogout }: SidebarProps) {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center border-r border-zinc-800/70 bg-zinc-950/90 py-4 backdrop-blur">
       {/* Logo */}
@@ -85,6 +87,14 @@ export function Sidebar({ active, onChange }: SidebarProps) {
             AK
           </span>
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-zinc-950" />
+        </button>
+        <button
+          onClick={onLogout}
+          title="Log out"
+          aria-label="Log out"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+        >
+          <LogOut className="h-[17px] w-[17px]" />
         </button>
       </div>
     </aside>

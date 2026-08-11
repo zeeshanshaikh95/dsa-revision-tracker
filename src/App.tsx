@@ -7,7 +7,9 @@ import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
 import { useStore } from "./hooks/useStore";
+import { useAuth } from "./hooks/useAuth";
 import { Sidebar, type NavKey } from "./components/Sidebar";
+import { Login } from "./components/Login";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
 import { Analytics } from "./components/Analytics";
@@ -32,6 +34,7 @@ interface Toast {
 
 export default function App() {
   const store = useStore();
+  const auth = useAuth();
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [search, setSearch] = useState("");
   const [tableFilter, setTableFilter] = useState<FilterKey>("all");
@@ -156,15 +159,20 @@ export default function App() {
   // Persisted state loads via useSyncExternalStore before first paint on the
   // client; during prerender/hydration `ready` is false and we show a shell.
   // Must come after all hooks so the hook order stays stable across renders.
-  if (!store.ready) {
+  if (!auth.ready || !store.ready) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950">
         <div className="flex items-center gap-3 text-sm text-zinc-500">
           <span className="h-2 w-2 animate-pulse-soft rounded-full bg-emerald-400" />
-          Loading your problem bank…
+          Loading…
         </div>
       </div>
     );
+  }
+
+  // Signed out — show the login / sign-up gate.
+  if (!auth.user) {
+    return <Login onLogin={auth.login} onSignup={auth.signup} />;
   }
 
   const dashboard = (
@@ -236,7 +244,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      <Sidebar active={nav} onChange={setNav} />
+      <Sidebar active={nav} onChange={setNav} onLogout={auth.logout} />
       <main className="pl-[68px]">
         <Header
           search={search}
