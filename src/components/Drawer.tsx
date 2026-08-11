@@ -1,23 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
+  Check,
   Clock3,
   Code2,
+  Copy,
   ExternalLink,
   Eye,
+  Lightbulb,
   Pause,
   Play,
   RotateCcw,
+  ShieldAlert,
+  Sparkles,
   Timer,
   X,
 } from "lucide-react";
 import type { Problem } from "../types";
 import { relativeDay, todayKey } from "../lib/spaced";
+import {
+  generateRevisionNotes,
+  revisionNoteToMarkdown,
+} from "../lib/revisionNotes";
 import { Markdown } from "../lib/markdown";
 import { DifficultyBadge, ModuleTag } from "./badges";
 import { ProgressRing } from "./ProgressRing";
 
-type TabKey = "intuition" | "complexity";
+type TabKey = "intuition" | "complexity" | "revision";
 
 const TIMER_PRESETS = [
   { label: "10m", seconds: 600 },
@@ -42,6 +51,7 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
   const [tab, setTab] = useState<TabKey>("intuition");
   const [preview, setPreview] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Focus timer state
   const [totalSecs, setTotalSecs] = useState(900);
@@ -82,6 +92,19 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
 
   if (!problem) return null;
 
+  const note = generateRevisionNotes(problem);
+  const copyMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        revisionNoteToMarkdown(note, problem.title),
+      );
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  };
+
   const today = todayKey();
   const timerPct = totalRef.current === 0 ? 0 : Math.round((left / totalRef.current) * 100);
 
@@ -98,6 +121,139 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
   };
 
   const isDone = left <= 0;
+
+  function RevisionNotes({ problem: p }: { problem: Problem }) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Generated revision notes
+            </p>
+            <p className="mt-0.5 text-[11px] text-zinc-600">
+              Auto-built from the {p.pattern} pattern + your progress
+            </p>
+          </div>
+          <button
+            onClick={copyMarkdown}
+            aria-label="Copy revision notes as markdown"
+            className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+              copied
+                ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-inset ring-emerald-500/30"
+                : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            }`}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+
+        {/* Pattern idea */}
+        <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/10 p-4">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
+            <Sparkles className="h-3.5 w-3.5" />
+            The idea
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">
+            {note.idea}
+          </p>
+        </div>
+
+        {/* Signals */}
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <Lightbulb className="h-3.5 w-3.5" />
+            When to reach for it
+          </p>
+          <ul className="space-y-1.5">
+            {note.signals.map((s, i) => (
+              <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-zinc-400">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-amber-400" />
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Approach */}
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <Code2 className="h-3.5 w-3.5" />
+            Template approach
+          </p>
+          <ol className="space-y-2">
+            {note.approach.map((s, i) => (
+              <li key={i} className="flex gap-2.5 text-[13px] leading-relaxed text-zinc-400">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-zinc-800 font-mono text-[10px] font-bold text-emerald-400">
+                  {i + 1}
+                </span>
+                {s}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Complexity */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <Timer className="h-3.5 w-3.5" />
+            Typical cost
+          </p>
+          <p className="mt-1.5 font-mono text-[13px] text-emerald-300">
+            {note.complexity}
+          </p>
+        </div>
+
+        {/* Pitfalls */}
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Pitfalls to avoid
+          </p>
+          <ul className="space-y-1.5">
+            {note.pitfalls.map((x, i) => (
+              <li key={i} className="flex gap-2 text-[13px] leading-relaxed text-zinc-400">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-rose-400" />
+                {x}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Variations */}
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Related problems / variations
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {note.variations.map((v, i) => (
+              <span
+                key={i}
+                className="rounded-full border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-[11px] font-medium text-zinc-400"
+              >
+                {v}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Personal tips */}
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+            <Check className="h-3.5 w-3.5" />
+            Your revision tips
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {note.tips.map((t, i) => (
+              <li key={i} className="text-[13px] leading-relaxed text-zinc-300">
+                • {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50">
@@ -164,13 +320,13 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
           </div>
 
           {/* Tabs */}
-          <div className="mt-4 flex gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">
-            {(
-              [
-                { key: "intuition", label: "My Intuition", icon: BookOpen },
-                { key: "complexity", label: "Complexity", icon: Code2 },
-              ] as const
-            ).map(({ key, label, icon: Icon }) => {
+          <div className="mt-4 flex gap-1 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1">              {(
+                [
+                  { key: "intuition", label: "My Intuition", icon: BookOpen },
+                  { key: "revision", label: "Revision Notes", icon: Sparkles },
+                  { key: "complexity", label: "Complexity", icon: Code2 },
+                ] as const
+              ).map(({ key, label, icon: Icon }) => {
               const active = tab === key;
               return (
                 <button
@@ -230,6 +386,8 @@ export function Drawer({ problem, onClose, onUpdate, onResetReview }: DrawerProp
                 Supports markdown: **bold**, `code`, - lists, # headings, &gt; quotes.
               </p>
             </div>
+          ) : tab === "revision" ? (
+            <RevisionNotes problem={problem} />
           ) : (
             <div className="space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
