@@ -18,6 +18,7 @@ import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
 import { MotivationQuote } from "./components/MotivationQuote";
 import { ConfettiBurst } from "./components/ConfettiBurst";
+import { TasksPanel } from "./components/TasksPanel";
 import { Analytics } from "./components/Analytics";
 import { Settings } from "./components/Settings";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
@@ -437,6 +438,10 @@ export default function App() {
             : "All caught up — nothing due for review right now."}
         </p>
       </div>
+
+      {/* To-do list */}
+      <TasksPanel />
+
       <ProblemTable
         problems={store.problems}
         filter={tableFilter}
