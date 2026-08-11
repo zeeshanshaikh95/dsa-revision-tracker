@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { CheckCircle2, Settings } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
@@ -14,6 +12,7 @@ import { Login } from "./components/Login";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
 import { Analytics } from "./components/Analytics";
+import { Settings } from "./components/Settings";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
 import type { ProblemFormValues } from "./components/QuickAddModal";
 
@@ -245,25 +244,6 @@ export default function App() {
     </div>
   );
 
-  const placeholder = (title: string, icon: LucideIcon, blurb: string) => {
-    const Icon = icon;
-    return (
-      <div className="card flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-800/80 text-zinc-400">
-          <Icon className="h-7 w-7" />
-        </span>
-        <div>
-          <h1 className="text-xl font-bold text-zinc-100">{title}</h1>
-          <p className="mx-auto mt-1 max-w-md text-sm text-zinc-500">{blurb}</p>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-2 text-sm text-zinc-400">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          Data is already being collected — this view ships next.
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-zinc-950">
       <Sidebar active={nav} onChange={setNav} onLogout={auth.logout} />
@@ -282,12 +262,13 @@ export default function App() {
           {nav === "analytics" && (
             <Analytics problems={store.problems} activity={store.activity} />
           )}
-          {nav === "settings" &&
-            placeholder(
-              "Settings",
-              Settings,
-              "Review interval tuning, streak goals, and data export will live here.",
-            )}
+          {nav === "settings" && (
+            <Settings
+              user={auth.user}
+              authMode={auth.mode}
+              syncStatus={sync.status}
+            />
+          )}
         </div>
       </main>
 
