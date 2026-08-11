@@ -6,6 +6,7 @@ import { Dices, Download, PlayCircle } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
 import { pickSurpriseProblem } from "./lib/surprise";
+import { MOTIVATIONAL_QUOTES, randomQuoteIndex } from "./lib/quotes";
 import { downloadText, problemsToCsv } from "./lib/export";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
 import { setSettings, useSettings } from "./hooks/useSettings";
@@ -42,7 +43,7 @@ const ReviewSession = dynamic(
 interface Toast {
   id: number;
   message: string;
-  tone: "success" | "danger";
+  tone: "success" | "danger" | "celebration";
 }
 
 export default function App() {
@@ -88,9 +89,33 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2800);
+    const delay = toast.tone === "celebration" ? 5000 : 2800;
+    const t = setTimeout(() => setToast(null), delay);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Celebrate the daily goal the moment it's reached: a random motivational
+  // quote toast, once per crossing. The first usable render only records the
+  // state (the loading shell renders with an empty bank, which would make a
+  // pre-met goal look like a fresh crossing and toast on every page load).
+  const goalHit = settings.dailyGoal > 0 && solvedToday >= settings.dailyGoal;
+  const goalHitRef = useRef(false);
+  const seenUsable = useRef(false);
+  useEffect(() => {
+    if (!auth.ready || !store.ready) return;
+    if (!seenUsable.current) {
+      seenUsable.current = true;
+      goalHitRef.current = goalHit;
+      return;
+    }
+    if (goalHit && !goalHitRef.current) {
+      goalHitRef.current = true;
+      const q = MOTIVATIONAL_QUOTES[randomQuoteIndex(null)];
+      notify(`🎯 Daily goal complete! “${q.text}” — ${q.author}`, "celebration");
+    } else if (!goalHit) {
+      goalHitRef.current = false;
+    }
+  }, [goalHit, notify, auth.ready, store.ready]);
 
   // Warm the lazy overlay chunks during idle time so opening the drawer or
   // quick-add modal never waits on a network fetch.
@@ -540,7 +565,9 @@ export default function App() {
           className={`fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 animate-toast-in rounded-xl border px-4 py-3 text-sm font-medium shadow-2xl ${
             toast.tone === "danger"
               ? "border-rose-500/30 bg-zinc-900 text-rose-300"
-              : "border-emerald-500/30 bg-zinc-900 text-emerald-300"
+              : toast.tone === "celebration"
+                ? "border-amber-500/40 bg-gradient-to-r from-emerald-500/15 via-zinc-900 to-amber-500/15 text-zinc-100"
+                : "border-emerald-500/30 bg-zinc-900 text-emerald-300"
           }`}
         >
           {toast.message}
