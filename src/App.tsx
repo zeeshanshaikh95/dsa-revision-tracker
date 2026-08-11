@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { BarChart3, CheckCircle2, Settings, Trash2 } from "lucide-react";
+import { CheckCircle2, Settings, Trash2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
@@ -10,6 +10,7 @@ import { useStore } from "./hooks/useStore";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { KpiGrid } from "./components/KpiGrid";
+import { Analytics } from "./components/Analytics";
 import { ProblemTable, type FilterKey } from "./components/ProblemTable";
 import type { ProblemFormValues } from "./components/QuickAddModal";
 
@@ -285,12 +286,9 @@ export default function App() {
         <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">
           {nav === "dashboard" && dashboard}
           {nav === "bank" && bank}
-          {nav === "analytics" &&
-            placeholder(
-              "Analytics",
-              BarChart3,
-              "Per-module accuracy, confidence drift over time, and review-load forecasting will live here.",
-            )}
+          {nav === "analytics" && (
+            <Analytics problems={store.problems} activity={store.activity} />
+          )}
           {nav === "settings" &&
             placeholder(
               "Settings",
