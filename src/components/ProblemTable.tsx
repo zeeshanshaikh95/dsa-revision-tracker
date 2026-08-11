@@ -42,6 +42,42 @@ interface ProblemTableProps {
   onEdit: (problem: Problem) => void;
   onDelete: (id: string) => void;
   onResetReview: (id: string) => void;
+  /** When provided, shows a destructive "Clear all" button in the toolbar. */
+  onClearAll?: () => void;
+}
+
+/** Destructive "Clear all" with a two-step confirm, like the row delete. */
+function ClearAllButton({
+  onClear,
+  disabled,
+}: {
+  onClear: () => void;
+  disabled?: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <button
+      disabled={disabled}
+      onClick={() => {
+        if (confirming) {
+          setConfirming(false);
+          onClear();
+        } else {
+          setConfirming(true);
+        }
+      }}
+      onBlur={() => setConfirming(false)}
+      title="Remove every problem from the bank"
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        confirming
+          ? "border-rose-500/40 bg-rose-500/15 text-rose-400"
+          : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-rose-500/40 hover:text-rose-400"
+      }`}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      {confirming ? "Confirm clear?" : "Clear all"}
+    </button>
+  );
 }
 
 interface RowProps {
@@ -238,6 +274,7 @@ export function ProblemTable({
   onEdit,
   onDelete,
   onResetReview,
+  onClearAll,
 }: ProblemTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("nextReview");
   const [sortAsc, setSortAsc] = useState(true);
@@ -344,15 +381,23 @@ export function ProblemTable({
           })}
         </div>
 
-        <div className="relative w-full md:w-64">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="Filter table…"
-            className="h-8 w-full rounded-lg border border-zinc-800 bg-zinc-900/70 pl-8 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-          />
+        <div className="flex w-full items-center gap-2 md:w-auto">
+          {onClearAll && (
+            <ClearAllButton
+              onClear={onClearAll}
+              disabled={problems.length === 0}
+            />
+          )}
+          <div className="relative w-full md:w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => onSearch(e.target.value)}
+              placeholder="Filter table…"
+              className="h-8 w-full rounded-lg border border-zinc-800 bg-zinc-900/70 pl-8 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </div>
         </div>
       </div>
 
