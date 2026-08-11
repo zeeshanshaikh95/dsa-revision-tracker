@@ -1,0 +1,453 @@
+import type { Problem } from "../types";
+import { addDaysKey, todayKey } from "../lib/spaced";
+
+let seq = 0;
+const uid = () => `seed-${++seq}`;
+
+interface SeedInput {
+  title: string;
+  url: string;
+  module: string;
+  difficulty: Problem["difficulty"];
+  confidence: Problem["confidence"];
+  pattern: string;
+  intuition: string;
+  timeComplexity: string;
+  spaceComplexity: string;
+  /** How long the last solve took, e.g. "45m 5s". */
+  lastDuration?: string;
+  /** Days from today when it was last solved. */
+  solvedDaysAgo: number;
+  /** Days from today when it is next due (negative = overdue). */
+  dueInDays: number;
+  reviewCount: number;
+  status?: Problem["status"];
+}
+
+function problem(input: SeedInput): Problem {
+  const lastSolved = addDaysKey(todayKey(), -input.solvedDaysAgo);
+  const nextReview = addDaysKey(todayKey(), input.dueInDays);
+  return {
+    id: uid(),
+    title: input.title,
+    url: input.url,
+    module: input.module,
+    difficulty: input.difficulty,
+    confidence: input.confidence,
+    status: input.status ?? "active",
+    pattern: input.pattern,
+    intuition: input.intuition,
+    timeComplexity: input.timeComplexity,
+    spaceComplexity: input.spaceComplexity,
+    lastDuration: input.lastDuration,
+    lastSolved,
+    nextReview,
+    reviewCount: input.reviewCount,
+    createdAt: lastSolved,
+  };
+}
+
+export function buildSeed(): Problem[] {
+  return [
+    problem({
+      title: "Two Sum",
+      url: "https://leetcode.com/problems/two-sum/",
+      module: "Introduction",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Hash Map",
+      intuition:
+        "Classic complement lookup. Build a `Map` of value → index while scanning.\n\n**Edge cases**\n- Same element used twice → check the map *before* inserting.\n- Duplicate values are fine, the map holds the latest index.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(N)",
+      solvedDaysAgo: 2,
+      dueInDays: 1,
+      reviewCount: 6,
+    }),
+    problem({
+      title: "Contains Duplicate",
+      url: "https://leetcode.com/problems/contains-duplicate/",
+      module: "Warm Up",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Hash Map",
+      intuition:
+        "Single pass into a `Set`. The moment an insert returns false, we have a duplicate.\n\nSorting also works in O(N log N) with O(1) space.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(N)",
+      solvedDaysAgo: 12,
+      dueInDays: -2,
+      reviewCount: 4,
+    }),
+    problem({
+      title: "Valid Anagram",
+      url: "https://leetcode.com/problems/valid-anagram/",
+      module: "Warm Up",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Hash Map",
+      intuition:
+        "Counter of one string, decrement with the other. All zeros at the end → anagram.\n\n**Gotcha** — compare lengths first, and mind unicode frequency for the follow-up.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 1,
+      dueInDays: 0,
+      reviewCount: 2,
+    }),
+    problem({
+      title: "Big-O Cheat Sheet",
+      url: "https://www.bigocheatsheet.com/",
+      module: "Time/Space Complexity",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Simulation",
+      intuition:
+        "Memorize growth order: `1 < log n < n < n log n < n² < 2ⁿ < n!`.\n\nLoop over halves → log; nested independent loops multiply; recursion depth × branching factor for tree recurrences.",
+      timeComplexity: "O(1)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 4,
+      dueInDays: 3,
+      reviewCount: 3,
+    }),
+    problem({
+      title: "Best Time to Buy and Sell Stock",
+      url: "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Sliding Window",
+      intuition:
+        "Track the min price seen so far, candidate profit = price − min. Slide the 'window' of the buy day forward as prices fall.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "28m 16s",
+      solvedDaysAgo: 2,
+      dueInDays: 0,
+      reviewCount: 5,
+    }),
+    problem({
+      title: "Product of Array Except Self",
+      url: "https://leetcode.com/problems/product-of-array-except-self/",
+      module: "Arrays",
+      difficulty: "medium",
+      confidence: "hints",
+      pattern: "Prefix Sum",
+      intuition:
+        "Two passes: left products into the output, then multiply by running right products.\n\n**Key insight** — the division-free constraint is the hint to use prefix/suffix products.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 3,
+      dueInDays: -1,
+      reviewCount: 3,
+    }),
+    problem({
+      title: "Maximum Subarray (Kadane's)",
+      url: "https://leetcode.com/problems/maximum-subarray/",
+      module: "Arrays",
+      difficulty: "medium",
+      confidence: "mastered",
+      pattern: "Dynamic Programming",
+      intuition:
+        "Kadane: local max = `max(num, local + num)`. Reset whenever a subarray goes negative — a negative prefix never helps.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 8,
+      dueInDays: 6,
+      reviewCount: 7,
+    }),
+    problem({
+      title: "Merge Intervals",
+      url: "https://leetcode.com/problems/merge-intervals/",
+      module: "Arrays",
+      difficulty: "medium",
+      confidence: "struggled",
+      pattern: "Greedy",
+      intuition:
+        "Sort by start time, then extend the current interval while `next.start <= current.end`.\n\n**Edge case** — overlapping chains (a overlaps b, b overlaps c) must merge all three.",
+      timeComplexity: "O(N log N)",
+      spaceComplexity: "O(N)",
+      solvedDaysAgo: 1,
+      dueInDays: 0,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "3Sum",
+      url: "https://leetcode.com/problems/3sum/",
+      module: "Arrays",
+      difficulty: "medium",
+      confidence: "hints",
+      pattern: "Two-Pointer",
+      intuition:
+        "Sort, fix one element, two-pointer sweep the rest. Skip duplicates at every level to avoid repeated triplets.\n\nFalls to O(N²) overall.",
+      timeComplexity: "O(N²)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 5,
+      dueInDays: 2,
+      reviewCount: 2,
+    }),
+    problem({
+      title: "Container With Most Water",
+      url: "https://leetcode.com/problems/container-with-most-water/",
+      module: "Two Pointers",
+      difficulty: "medium",
+      confidence: "mastered",
+      pattern: "Two-Pointer",
+      intuition:
+        "Two pointers from both ends, always move the shorter line inward. The taller one might still form a bigger container.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 6,
+      dueInDays: 8,
+      reviewCount: 4,
+    }),
+    problem({
+      title: "Longest Substring Without Repeating Characters",
+      url: "https://leetcode.com/problems/longest-substring-without-repeating-characters/",
+      module: "Sliding Window",
+      difficulty: "medium",
+      confidence: "mastered",
+      pattern: "Sliding Window",
+      intuition:
+        "Expand the right pointer, shrink from the left while a duplicate exists. Track last-seen index per char to jump the left pointer directly.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 2,
+      dueInDays: 5,
+      reviewCount: 6,
+    }),
+    problem({
+      title: "Binary Search",
+      url: "https://leetcode.com/problems/binary-search/",
+      module: "Binary Search",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Binary Search",
+      intuition:
+        "Classic template with `lo = mid + 1`, `hi = mid - 1`. Loop invariant: the answer is always inside `[lo, hi]`.\n\n**Trap** — `mid = lo + (hi - lo) / 2` to avoid overflow.",
+      timeComplexity: "O(log N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 10,
+      dueInDays: -3,
+      reviewCount: 8,
+    }),
+    problem({
+      title: "Reverse Linked List",
+      url: "https://leetcode.com/problems/reverse-linked-list/",
+      module: "Linked Lists",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Recursion",
+      intuition:
+        "Iterative: flip `curr.next` to `prev`, walk all three pointers. Recursive: reverse the tail, then point `head.next.next` back at head.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 0,
+      dueInDays: 1,
+      reviewCount: 3,
+    }),
+    problem({
+      title: "Climbing Stairs",
+      url: "https://leetcode.com/problems/climbing-stairs/",
+      module: "Dynamic Programming",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Dynamic Programming",
+      intuition:
+        "Fibonacci in disguise — `dp[n] = dp[n-1] + dp[n-2]`. Keep only two rolling variables instead of a full table.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 7,
+      dueInDays: 7,
+      reviewCount: 5,
+      status: "completed",
+    }),
+    problem({
+      title: "Longest Palindromic Substring",
+      url: "https://leetcode.com/problems/longest-palindromic-substring/",
+      module: "Strings",
+      difficulty: "medium",
+      confidence: "struggled",
+      pattern: "Two-Pointer",
+      intuition:
+        "Expand around every center (both odd and even length). Keep the best window.\n\nManacher is O(N) but overkill for interviews — expansion is expected.",
+      timeComplexity: "O(N²)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 1,
+      dueInDays: 0,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "Merge Two Sorted Lists",
+      url: "https://leetcode.com/problems/merge-two-sorted-lists/",
+      module: "Linked Lists",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Recursion",
+      intuition:
+        "Dummy head + walk both lists, or recursive: `min(l1, l2).next = merge(rest)`. The recursive version is the cleanest.",
+      timeComplexity: "O(N + M)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 15,
+      dueInDays: 15,
+      reviewCount: 6,
+      status: "completed",
+    }),
+    problem({
+      title: "Valid Parentheses",
+      url: "https://leetcode.com/problems/valid-parentheses/",
+      module: "Stacks & Queues",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Monotonic Stack",
+      intuition:
+        "Push openers, pop and match closers. Fail fast on mismatched close or leftover stack.\n\n**Edge case** — `([)]` is invalid, ordering matters.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(N)",
+      solvedDaysAgo: 2,
+      dueInDays: 4,
+      reviewCount: 4,
+    }),
+    problem({
+      title: "Remove Duplicates from Sorted Array",
+      url: "https://leetcode.com/problems/remove-duplicates-from-sorted-array/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Two-Pointer",
+      intuition:
+        "Slow pointer marks the write position, fast pointer scans. Copy `nums[fast]` into `nums[slow]` whenever it differs from the previous kept value.\n\n**Edge case** — empty or single-element arrays, and make sure you return the new length (not the array).",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "45m 5s",
+      solvedDaysAgo: 3,
+      dueInDays: 0,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "Remove Element",
+      url: "https://leetcode.com/problems/remove-element/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Two-Pointer",
+      intuition:
+        "Same family as Remove Duplicates: slow pointer overwrites values that aren't `val`. Fast pointer always advances.\n\nWatch the classic trap — swapping instead of overwriting keeps `val` in the array.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "22m 46s",
+      solvedDaysAgo: 4,
+      dueInDays: 0,
+      reviewCount: 0,
+    }),
+    problem({
+      title: "Reverse String",
+      url: "https://leetcode.com/problems/reverse-string/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Two-Pointer",
+      intuition:
+        "Left/right pointers swap until they meet. In-place with O(1) extra memory — recursion is cute but the loop is the expected answer.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "26m 45s",
+      solvedDaysAgo: 5,
+      dueInDays: 0,
+      reviewCount: 2,
+    }),
+    problem({
+      title: "Merge Sorted Array",
+      url: "https://leetcode.com/problems/merge-sorted-array/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "struggled",
+      pattern: "Two-Pointer",
+      intuition:
+        "Fill from the END of `nums1` backwards — the extra zeroes at the tail make this the clean merge. Compare `m-1` and `n-1` pointers, take the larger.\n\n**Key insight** — going backwards avoids shifting and overwriting values.",
+      timeComplexity: "O(N + M)",
+      spaceComplexity: "O(1)",
+      lastDuration: "41m 33s",
+      solvedDaysAgo: 6,
+      dueInDays: 1,
+      reviewCount: 0,
+    }),
+    problem({
+      title: "Move Zeroes",
+      url: "https://leetcode.com/problems/move-zeroes/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Two-Pointer",
+      intuition:
+        "Non-zero pointer writes, then zero-fill the tail. Order of the non-zero elements must stay stable — so swapping with a forward pointer is safer than sorting.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "26m 31s",
+      solvedDaysAgo: 2,
+      dueInDays: 1,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "Max Consecutive Ones",
+      url: "https://leetcode.com/problems/max-consecutive-ones/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "mastered",
+      pattern: "Sliding Window",
+      intuition:
+        "Running counter resets to 0 on a zero, updates the max on a one. One pass, no window bookkeeping needed.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "16m 29s",
+      solvedDaysAgo: 7,
+      dueInDays: 2,
+      reviewCount: 2,
+    }),
+    problem({
+      title: "Missing Number",
+      url: "https://leetcode.com/problems/missing-number/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Bit Manipulation",
+      intuition:
+        "XOR everything with 0..n — pairs cancel out and the missing number remains. Sum formula `n(n+1)/2 − sum` also works; XOR avoids overflow.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      lastDuration: "16m 55s",
+      solvedDaysAgo: 8,
+      dueInDays: 3,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "Single Number",
+      url: "https://leetcode.com/problems/single-number/",
+      module: "Arrays",
+      difficulty: "easy",
+      confidence: "hints",
+      pattern: "Bit Manipulation",
+      intuition:
+        "XOR all elements — duplicates cancel to 0, leaving the unique value. `x ^ x = 0` and `x ^ 0 = x` are the only two facts you need.",
+      timeComplexity: "O(N)",
+      spaceComplexity: "O(1)",
+      solvedDaysAgo: 3,
+      dueInDays: 3,
+      reviewCount: 1,
+    }),
+    problem({
+      title: "Number of Islands",
+      url: "https://leetcode.com/problems/number-of-islands/",
+      module: "Trees & Graphs",
+      difficulty: "medium",
+      confidence: "struggled",
+      pattern: "DFS / BFS",
+      intuition:
+        "Grid DFS: on finding a '1', flood-fill the whole island, increment count. Mutating the grid to '0' avoids a visited set.\n\nWatch recursion depth on huge grids — prefer BFS or iterative stack.",
+      timeComplexity: "O(R × C)",
+      spaceComplexity: "O(R × C)",
+      solvedDaysAgo: 0,
+      dueInDays: 1,
+      reviewCount: 1,
+    }),
+  ];
+}
