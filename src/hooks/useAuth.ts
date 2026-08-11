@@ -218,6 +218,8 @@ export interface AuthStore {
   ready: boolean;
   /** Logged-in user's email, or null when signed out. */
   user: string | null;
+  /** Supabase user id (null in local mode / signed out) — used to scope data. */
+  userId: string | null;
   /** Which backend is active. */
   mode: "supabase" | "local";
   /** True when the user arrived via a password-reset link (Supabase mode). */
@@ -251,6 +253,7 @@ export function useAuth(): AuthStore {
 
   const [sbReady, setSbReady] = useState(false);
   const [sbUser, setSbUser] = useState<string | null>(null);
+  const [sbUserId, setSbUserId] = useState<string | null>(null);
   const [recovery, setRecovery] = useState(false);
 
   useEffect(() => {
@@ -266,12 +269,14 @@ export function useAuth(): AuthStore {
       const { data } = await sb.auth.getSession();
       if (!mounted) return;
       setSbUser(data.session?.user.email ?? null);
+      setSbUserId(data.session?.user.id ?? null);
       setSbReady(true);
       const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
         if (!mounted) return;
         if (event === "PASSWORD_RECOVERY") setRecovery(true);
         else if (event === "SIGNED_OUT") setRecovery(false);
         setSbUser(session?.user.email ?? null);
+        setSbUserId(session?.user.id ?? null);
       });
       unsubscribe = () => sub.subscription.unsubscribe();
     })();
@@ -392,6 +397,7 @@ export function useAuth(): AuthStore {
     () => ({
       ready,
       user,
+      userId: usingSupabase ? sbUserId : null,
       mode: usingSupabase ? "supabase" : "local",
       recovery,
       login,
@@ -404,6 +410,7 @@ export function useAuth(): AuthStore {
     [
       ready,
       user,
+      sbUserId,
       usingSupabase,
       recovery,
       login,

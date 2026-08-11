@@ -1,11 +1,13 @@
 import { memo } from "react";
-import { Flame, Plus, Search, X } from "lucide-react";
+import { Cloud, CloudOff, Flame, Loader2, Plus, Search, X } from "lucide-react";
+import type { SyncStatus } from "../hooks/useDataSync";
 
 interface HeaderProps {
   search: string;
   onSearch: (value: string) => void;
   streak: number;
   dueCount: number;
+  syncStatus: SyncStatus;
   onQuickAdd: () => void;
 }
 
@@ -14,6 +16,7 @@ export const Header = memo(function Header({
   onSearch,
   streak,
   dueCount,
+  syncStatus,
   onQuickAdd,
 }: HeaderProps) {
   return (
@@ -41,6 +44,39 @@ export const Header = memo(function Header({
         </div>
 
         <div className="ml-auto flex items-center gap-2.5">
+          {/* Sync status (Supabase mode only) */}
+          {syncStatus !== "off" && (
+            <div
+              title={
+                syncStatus === "loading"
+                  ? "Syncing your problem bank…"
+                  : syncStatus === "synced"
+                    ? "Bank synced across devices"
+                    : "Sync failed — changes are saved locally and will retry"
+              }
+              className={`hidden items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold lg:flex ${
+                syncStatus === "error"
+                  ? "border-rose-500/25 bg-rose-500/10 text-rose-400"
+                  : syncStatus === "synced"
+                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+                    : "border-zinc-800 bg-zinc-900/60 text-zinc-400"
+              }`}
+            >
+              {syncStatus === "loading" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : syncStatus === "synced" ? (
+                <Cloud className="h-4 w-4" />
+              ) : (
+                <CloudOff className="h-4 w-4" />
+              )}
+              {syncStatus === "loading"
+                ? "Syncing"
+                : syncStatus === "synced"
+                  ? "Synced"
+                  : "Offline"}
+            </div>
+          )}
+
           {/* Streak badge */}
           <div
             className={`hidden items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold sm:flex ${

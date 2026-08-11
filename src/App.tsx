@@ -6,8 +6,9 @@ import { CheckCircle2, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
-import { useStore } from "./hooks/useStore";
+import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
 import { useAuth } from "./hooks/useAuth";
+import { useDataSync } from "./hooks/useDataSync";
 import { Sidebar, type NavKey } from "./components/Sidebar";
 import { Login } from "./components/Login";
 import { Header } from "./components/Header";
@@ -33,8 +34,16 @@ interface Toast {
 }
 
 export default function App() {
-  const store = useStore();
   const auth = useAuth();
+  // Per-user storage key in Supabase mode so each account syncs its own bank
+  // across devices; the legacy shared key in local mode. Supabase users start
+  // with an empty bank (no demo seed) — their data comes from the cloud.
+  const storageKey =
+    auth.mode === "supabase" && auth.userId
+      ? `dsa-revision-tracker:v1:${auth.userId}`
+      : STORAGE_KEY_LEGACY;
+  const store = useStore(storageKey, auth.mode !== "supabase");
+  const sync = useDataSync(store);
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [search, setSearch] = useState("");
   const [tableFilter, setTableFilter] = useState<FilterKey>("all");
@@ -264,6 +273,7 @@ export default function App() {
           onSearch={setSearch}
           streak={streak}
           dueCount={dueCount}
+          syncStatus={sync.status}
           onQuickAdd={openAdd}
         />
         <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">

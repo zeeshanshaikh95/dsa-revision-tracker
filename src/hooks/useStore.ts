@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { Problem } from "../types";
 import { buildSeed } from "../data/seed";
 import { nextReviewAfterSolve, todayKey } from "../lib/spaced";
 
-const STORAGE_KEY = "dsa-revision-tracker:v1";
+export const STORAGE_KEY_LEGACY = "dsa-revision-tracker:v1";
 
 export interface NewProblemInput {
   title: string;
@@ -13,75 +13,58 @@ export interface NewProblemInput {
   confidence: Problem["confidence"];
 }
 
-interface PersistedState {
+export interface PersistedState {
   problems: Problem[];
   /** Local yyyy-mm-dd keys on which the user solved at least one problem. */
   activity: string[];
+  /**
+   * Sync bookkeeping. Every local mutation stamps `updatedAt` (client clock);
+   * `hydrate()` stamps it with the DB row's timestamp. The sync layer uses it
+   * to tell "this change came from the cloud" apart from "the user edited".
+   */
+  meta: { updatedAt: string };
 }
 
-function buildInitial(): PersistedState {
-  return { problems: buildSeed(), activity: [todayKey()] };
+const EPOCH = "1970-01-01T00:00:00.000Z";
+const serverSnapshot: PersistedState = {
+  problems: [],
+  activity: [],
+  meta: { updatedAt: EPOCH },
+};
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-function loadState(): PersistedState {
+function loadState(storageKey: string, seed: boolean): PersistedState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (raw) {
-      const parsed = JSON.parse(raw) as PersistedState;
+      const parsed = JSON.parse(raw) as Partial<PersistedState>;
       if (Array.isArray(parsed.problems) && Array.isArray(parsed.activity)) {
-        return parsed;
+        const meta =
+          parsed.meta && typeof parsed.meta.updatedAt === "string"
+            ? parsed.meta
+            : { updatedAt: EPOCH };
+        return { problems: parsed.problems, activity: parsed.activity, meta };
       }
     }
   } catch {
-    // Corrupt storage — fall through to a fresh seed.
+    // Corrupt storage — fall through to a fresh (or empty) bank.
   }
-  return buildInitial();
-}
-
-/**
- * Module-level store (single consumer: the dashboard). useSyncExternalStore
- * drives the SSR-safe handoff:
- *  - Server prerender + hydration render use `getServerSnapshot` (empty shell),
- *    which always matches the served HTML.
- *  - Immediately after hydration, React swaps in `getSnapshot` (localStorage)
- *    with a synchronous re-render before the first paint — no loading flash.
- */
-let state: PersistedState | null = null;
-const serverSnapshot: PersistedState = { problems: [], activity: [] };
-const listeners = new Set<() => void>();
-
-function subscribe(onChange: () => void): () => void {
-  listeners.add(onChange);
-  return () => {
-    listeners.delete(onChange);
+  return {
+    problems: seed ? buildSeed() : [],
+    activity: seed ? [todayKey()] : [],
+    meta: { updatedAt: EPOCH },
   };
 }
 
-/** Client snapshot: persisted state, lazily loaded and cached. */
-function getSnapshot(): PersistedState {
-  if (state === null) state = loadState();
-  return state;
-}
-
-/** Server/hydration snapshot: a stable empty shell. */
-function getServerSnapshot(): PersistedState {
-  return serverSnapshot;
-}
-
-function setState(updater: (prev: PersistedState) => PersistedState): void {
-  const prev = getSnapshot();
-  const next = updater(prev);
-  if (next !== prev) {
-    state = next;
-    listeners.forEach((l) => l());
-  }
-}
-
-export interface Store {
-  /** True once persisted state has been loaded on the client. */
-  ready: boolean;
-  problems: Problem[];
-  activity: string[];
+interface StoreInstance {
+  subscribe: (onChange: () => void) => () => void;
+  getSnapshot: () => PersistedState;
+  getServerSnapshot: () => PersistedState;
+  /** Replace the bank with cloud data (marks it as synced state). */
+  hydrate: (problems: Problem[], activity: string[], updatedAt: string) => void;
   addProblem: (input: NewProblemInput) => Problem;
   updateProblem: (id: string, patch: Partial<Problem>) => void;
   deleteProblem: (id: string) => void;
@@ -90,22 +73,44 @@ export interface Store {
   resetReview: (id: string) => string;
 }
 
-export function useStore(): Store {
-  const storeState = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    getServerSnapshot,
-  );
+/**
+ * One store instance per (storageKey, seed) pair — a fresh instance per
+ * Supabase user, so different accounts on the same browser never share a
+ * cache. The in-memory state is the UI's synchronous source of truth and is
+ * mirrored to localStorage (offline cache); the sync layer reconciles it with
+ * the cloud.
+ */
+function createStore(storageKey: string, seed: boolean): StoreInstance {
+  let state: PersistedState = loadState(storageKey, seed);
+  const listeners = new Set<() => void>();
 
-  // Persist on every change (runs after the hydration swap, so a fresh seed
-  // is only written when there is genuinely nothing stored yet).
-  useEffect(() => {
+  const subscribe = (onChange: () => void): (() => void) => {
+    listeners.add(onChange);
+    return () => {
+      listeners.delete(onChange);
+    };
+  };
+  const getSnapshot = (): PersistedState => state;
+  const getServerSnapshot = (): PersistedState => serverSnapshot;
+
+  function commit(next: PersistedState): void {
+    state = next;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(storeState));
+      localStorage.setItem(storageKey, JSON.stringify(next));
     } catch {
       // Storage may be unavailable (private mode) — the app still works in-memory.
     }
-  }, [storeState]);
+    listeners.forEach((l) => l());
+  }
+
+  /** Mutations stamp `updatedAt` so the sync layer sees a user edit. */
+  function setState(updater: (prev: PersistedState) => PersistedState): void {
+    const prev = getSnapshot();
+    const next = updater(prev);
+    if (next !== prev) {
+      commit({ ...next, meta: { updatedAt: nowIso() } });
+    }
+  }
 
   const recordActivity = (st: PersistedState): PersistedState => {
     const today = todayKey();
@@ -114,7 +119,15 @@ export function useStore(): Store {
       : { ...st, activity: [...st.activity, today] };
   };
 
-  const addProblem = useCallback((input: NewProblemInput): Problem => {
+  const hydrate = (
+    problems: Problem[],
+    activity: string[],
+    updatedAt: string,
+  ): void => {
+    commit({ problems, activity, meta: { updatedAt } });
+  };
+
+  const addProblem = (input: NewProblemInput): Problem => {
     const today = todayKey();
     const problem: Problem = {
       id: crypto.randomUUID(),
@@ -134,30 +147,30 @@ export function useStore(): Store {
       recordActivity({ ...prev, problems: [problem, ...prev.problems] }),
     );
     return problem;
-  }, []);
+  };
 
-  const updateProblem = useCallback((id: string, patch: Partial<Problem>): void => {
+  const updateProblem = (id: string, patch: Partial<Problem>): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.map((p) =>
         p.id === id ? { ...p, ...patch } : p,
       ),
     }));
-  }, []);
+  };
 
-  const deleteProblem = useCallback((id: string): void => {
+  const deleteProblem = (id: string): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.filter((p) => p.id !== id),
     }));
-  }, []);
+  };
 
   /** Wipe the problem bank. Keeps the activity log (streak history). */
-  const clearAllProblems = useCallback((): void => {
+  const clearAllProblems = (): void => {
     setState((prev) => recordActivity({ ...prev, problems: [] }));
-  }, []);
+  };
 
-  const toggleStatus = useCallback((id: string): void => {
+  const toggleStatus = (id: string): void => {
     setState((prev) => ({
       ...prev,
       problems: prev.problems.map((p) =>
@@ -169,10 +182,10 @@ export function useStore(): Store {
           : p,
       ),
     }));
-  }, []);
+  };
 
   /** Reset the spaced-repetition countdown after re-solving from scratch. */
-  const resetReview = useCallback((id: string): string => {
+  const resetReview = (id: string): string => {
     const today = todayKey();
     const current = getSnapshot().problems.find((p) => p.id === id);
     const next = nextReviewAfterSolve(current?.reviewCount ?? 0);
@@ -193,32 +206,58 @@ export function useStore(): Store {
       }),
     );
     return next;
-  }, []);
+  };
 
-  // Memoize the store object: its identity must change ONLY when data changes.
-  // If it changed on every App render, every memoized row/child would re-render
-  // on each keystroke or filter click — the callbacks above are stable, and
-  // problems/activity arrays are reference-stable between mutations.
+  return {
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
+    hydrate,
+    addProblem,
+    updateProblem,
+    deleteProblem,
+    clearAllProblems,
+    toggleStatus,
+    resetReview,
+  };
+}
+
+export interface Store extends StoreInstance {
+  /** True once persisted state has been loaded on the client. */
+  ready: boolean;
+  problems: Problem[];
+  activity: string[];
+}
+
+export function useStore(storageKey: string, seed: boolean): Store {
+  // One instance per key/seed — created once and reused across renders.
+  const instance = useMemo(
+    () => createStore(storageKey, seed),
+    [storageKey, seed],
+  );
+  const storeState = useSyncExternalStore(
+    instance.subscribe,
+    instance.getSnapshot,
+    instance.getServerSnapshot,
+  );
+
+  // Instance identity is stable, so this object only changes when data does.
   return useMemo(
     () => ({
       ready: storeState !== serverSnapshot,
       problems: storeState.problems,
       activity: storeState.activity,
-      addProblem,
-      updateProblem,
-      deleteProblem,
-      clearAllProblems,
-      toggleStatus,
-      resetReview,
+      subscribe: instance.subscribe,
+      getSnapshot: instance.getSnapshot,
+      getServerSnapshot: instance.getServerSnapshot,
+      hydrate: instance.hydrate,
+      addProblem: instance.addProblem,
+      updateProblem: instance.updateProblem,
+      deleteProblem: instance.deleteProblem,
+      clearAllProblems: instance.clearAllProblems,
+      toggleStatus: instance.toggleStatus,
+      resetReview: instance.resetReview,
     }),
-    [
-      storeState,
-      addProblem,
-      updateProblem,
-      deleteProblem,
-      clearAllProblems,
-      toggleStatus,
-      resetReview,
-    ],
+    [storeState, instance],
   );
 }
