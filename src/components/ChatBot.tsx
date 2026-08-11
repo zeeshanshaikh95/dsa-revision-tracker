@@ -1,20 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, MessageSquare, Mic, MicOff, Send, X } from "lucide-react";
+import { Bot, MessageSquare, Send, X } from "lucide-react";
 import type { Store } from "../hooks/useStore";
 import { parseChat } from "../lib/assistant";
 import { relativeDay, todayKey } from "../lib/spaced";
-import {
-  cleanTranscript,
-  cloudSpeechErrorMessage,
-  createOfflineSession,
-  ensureMicPermission,
-  getRecognitionCtor,
-  type SpeechRecognitionLike,
-  type VoiceStatus,
-  VOICE_STATUS_HINT,
-} from "../lib/voice";
 
 interface Msg {
   id: number;
@@ -27,7 +17,7 @@ const WELCOME: Msg = {
   id: 0,
   role: "bot",
   text:
-    "Hey! I'm your DSA assistant 🤖 I can add, remove, search and update problems, tell you what's due, and summarize your progress. Try a command below, or type \"help\". Tap the mic 🎤 to speak commands.",
+    "Hey! I'm your DSA assistant 🤖 I can add, remove, search and update problems, tell you what's due, and summarize your progress. Try a command below, or type \"help\".",
   chips: ["What's due today?", "Add \"Two Sum\" difficulty=easy", "Stats"],
 };
 
@@ -36,25 +26,9 @@ export function ChatBot({ store }: { store: Store }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [pendingConfirm, setPendingConfirm] = useState<"clear" | null>(null);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>({ kind: "idle" });
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const idRef = useRef(1);
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
-  const offlineRef = useRef<ReturnType<typeof createOfflineSession> | null>(null);
-  const switchingRef = useRef(false);
-  const offlineWarnedRef = useRef(false);
-
-  const voiceActive =
-    voiceStatus.kind !== "idle" && voiceStatus.kind !== "error";
-
-  // Abort any in-flight recognition session when the panel unmounts.
-  useEffect(() => {
-    return () => {
-      recRef.current?.abort();
-      offlineRef.current?.cancel();
-    };
-  }, []);
 
   useEffect(() => {
     if (open) {
@@ -68,137 +42,6 @@ export function ChatBot({ store }: { store: Store }) {
       ...m,
       { id: idRef.current++, role: "bot", text, chips },
     ]);
-  };
-
-  /** Merge a recognized phrase with anything typed, then fire it. */
-  const finishTranscript = (spoken: string) => {
-    const clean = cleanTranscript(spoken);
-    const typed = inputRef.current?.value.trim() ?? "";
-    if (!clean) {
-      if (typed) {
-        setInput("");
-        send(typed);
-      } else {
-        respond(
-          "I heard sound but no speech — if music or noise was playing, pause it and say a command like “add Two Sum”.",
-        );
-      }
-      setVoiceStatus({ kind: "idle" });
-      return;
-    }
-    const merged = typed && clean ? `${typed} ${clean}` : typed || clean;
-    setInput("");
-    if (merged) send(merged);
-    setVoiceStatus({ kind: "idle" });
-  };
-
-  /** On-device Whisper path — used when the cloud speech service is unreachable. */
-  const beginOffline = () => {
-    switchingRef.current = true;
-    if (!offlineWarnedRef.current) {
-      offlineWarnedRef.current = true;
-      respond(
-        "The browser's speech service isn't reachable from here, so I'm switching to on-device mode — the first run downloads a small speech model (~40MB), after that it's instant and fully offline.",
-      );
-    }
-    const session = createOfflineSession({
-      onStatus: setVoiceStatus,
-      onTranscript: finishTranscript,
-      onError: (msg) => {
-        respond(msg);
-        setVoiceStatus({ kind: "idle" });
-      },
-    });
-    offlineRef.current = session;
-    void session.start();
-  };
-
-  /** Cloud Web Speech path (Chrome/Edge/Safari's built-in recognizer). */
-  const startCloud = () => {
-    const Ctor = getRecognitionCtor();
-    if (!Ctor) {
-      beginOffline();
-      return;
-    }
-    const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      let transcript = "";
-      for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i]?.[0]?.transcript ?? "";
-      }
-      const last = e.results[e.results.length - 1];
-      const spoken = transcript.trim();
-      if (last?.isFinal) {
-        finishTranscript(spoken);
-      } else if (!inputRef.current?.value) {
-        // Live preview of the transcript while still speaking.
-        setInput(spoken);
-      }
-    };
-    rec.onerror = (e) => {
-      if (e.error === "audio-capture") {
-        respond("No microphone detected — plug one in and try again.");
-        setVoiceStatus({ kind: "idle" });
-        return;
-      }
-      const msg = cloudSpeechErrorMessage(e.error);
-      if (msg) {
-        respond(msg);
-        setVoiceStatus({ kind: "idle" });
-        return;
-      }
-      // network / service-not-allowed → fall back to on-device transcription.
-      setVoiceStatus({ kind: "idle" });
-      beginOffline();
-    };
-    rec.onend = () => {
-      if (!switchingRef.current) setVoiceStatus({ kind: "idle" });
-    };
-    recRef.current = rec;
-    setVoiceStatus({ kind: "listening", engine: "cloud" });
-    try {
-      rec.start();
-    } catch {
-      setVoiceStatus({ kind: "idle" });
-    }
-  };
-
-  const stopVoice = () => {
-    if (recRef.current) {
-      recRef.current.stop();
-      setVoiceStatus({ kind: "idle" });
-      return;
-    }
-    const off = offlineRef.current;
-    if (off) {
-      if (off.isRecording()) {
-        off.stop(); // transcribe what was heard so far
-      } else {
-        off.cancel();
-        setVoiceStatus({ kind: "idle" });
-      }
-    }
-  };
-
-  const startListening = async () => {
-    if (voiceActive) {
-      stopVoice();
-      return;
-    }
-    switchingRef.current = false;
-    setVoiceStatus({ kind: "preflight" });
-    const micError = await ensureMicPermission();
-    if (micError) {
-      respond(micError);
-      setVoiceStatus({ kind: "idle" });
-      return;
-    }
-    if (getRecognitionCtor()) startCloud();
-    else beginOffline();
   };
 
   const send = (raw?: string) => {
@@ -283,13 +126,6 @@ export function ChatBot({ store }: { store: Store }) {
     }
   };
 
-  const placeholder =
-    voiceStatus.kind === "listening"
-      ? voiceStatus.engine === "device"
-        ? "Listening (offline)…"
-        : "Listening… speak now"
-      : VOICE_STATUS_HINT[voiceStatus.kind];
-
   const bubble =
     "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed";
 
@@ -309,12 +145,7 @@ export function ChatBot({ store }: { store: Store }) {
               </p>
             </div>
             <button
-              onClick={() => {
-                recRef.current?.abort();
-                offlineRef.current?.cancel();
-                setVoiceStatus({ kind: "idle" });
-                setOpen(false);
-              }}
+              onClick={() => setOpen(false)}
               aria-label="Close assistant"
               className="ml-auto rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
             >
@@ -370,24 +201,9 @@ export function ChatBot({ store }: { store: Store }) {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={placeholder}
+              placeholder="Try “add Two Sum” or “what's due?”"
               className="h-10 w-full rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
-            <button
-              type="button"
-              onClick={startListening}
-              aria-label={voiceActive ? "Stop voice input" : "Voice input"}
-              title={
-                voiceActive ? "Stop listening" : "Speak a command instead of typing"
-              }
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95 ${
-                voiceActive
-                  ? "border-rose-500/50 bg-rose-500/15 text-rose-400 animate-pulse"
-                  : "border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-300"
-              }`}
-            >
-              {voiceActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </button>
             <button
               type="submit"
               aria-label="Send message"
