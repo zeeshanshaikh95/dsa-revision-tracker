@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { Dices } from "lucide-react";
 import type { Problem } from "./types";
 import { currentStreak, relativeDay, reviewStatus, todayKey } from "./lib/spaced";
+import { pickSurpriseProblem } from "./lib/surprise";
 import { useStore, STORAGE_KEY_LEGACY } from "./hooks/useStore";
 import { useAuth } from "./hooks/useAuth";
 import { useDataSync } from "./hooks/useDataSync";
@@ -169,6 +171,15 @@ export default function App() {
     );
   }, [dueCount, notify]);
 
+  const handleSurprise = useCallback(() => {
+    const p = pickSurpriseProblem(store.problems, today);
+    if (!p) {
+      notify("No active problems to surprise you with — add a few first!", "danger");
+      return;
+    }
+    setDrawerProblem(p);
+  }, [store.problems, today, notify]);
+
   // Persisted state loads via useSyncExternalStore before first paint on the
   // client; during prerender/hydration `ready` is false and we show a shell.
   // Must come after all hooks so the hook order stays stable across renders.
@@ -204,6 +215,23 @@ export default function App() {
   const dashboard = (
     <div className="space-y-5">
       <KpiGrid problems={store.problems} streak={streak} onShowDue={showDue} />
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={handleSurprise}
+            aria-label="Surprise me with a random problem"
+            title="Pick a random problem — overdue and due-today ones are more likely"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-all hover:bg-emerald-400 active:scale-95"
+          >
+            <Dices className="h-4 w-4" />
+            Surprise me
+          </button>
+          <p className="truncate text-xs text-zinc-500">
+            Random problem — overdue and due-today ones are more likely to show
+            up.
+          </p>
+        </div>
+      </div>
       <ProblemTable
         problems={store.problems}
         filter={tableFilter}

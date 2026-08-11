@@ -8,6 +8,7 @@ import {
   overdueCount,
   totalFocusedTime,
 } from "./analytics";
+import { pickSurpriseProblem } from "./surprise";
 
 /**
  * Deterministic assistant for managing the problem bank. Everything runs
@@ -320,6 +321,20 @@ export function parseChat(raw: string, problems: Problem[]): ChatAction {
   if (/^(help|\?|commands|what can you do)$/.test(low)) return helpAction();
   if (/^(stats|summary|overview|progress|how am i doing)$/.test(low))
     return statsAction(problems);
+  if (/^(surprise me|surprise|random|pick one for me|what should i do|give me something)$/.test(low)) {
+    const p = pickSurpriseProblem(problems, todayKey());
+    if (!p)
+      return {
+        kind: "reply",
+        text: "No active problems to surprise you with — add a few first!",
+        chips: helpChips,
+      };
+    return {
+      kind: "reply",
+      text: `🎲 Surprise: “${p.title}” (${p.module} · ${difficultyLabel(p.difficulty)}) — ${relativeDay(p.nextReview, todayKey())}. Open it from the bank and give it a pass!`,
+      chips: ["What's due today?", "List all problems"],
+    };
+  }
   if (/^(what'?s due|what is due|due today|due|overdue|what needs review|to review)/.test(low))
     return dueAction(problems);
   if (/\b(clear all|wipe everything|delete all|remove all)\b/.test(low))
